@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-15T11:21:36.049Z",
+  "generatedAt": "2026-11-15T11:46:44.689Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
     {
       "id": "bili",
       "name": "B站",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "description": "看别人发的 B 站视频；定时自己刷、评论、回评论；抽帧看画面、发截图；按权限改自己的头像 / 签名。",
       "category": "platform",
       "tags": [
@@ -27,15 +27,15 @@
         "tools"
       ],
       "replacesBuiltin": false,
-      "path": "bili-v1.1.0/bili.zip",
-      "sha256": "7ad5558945df6e1dd24ece4bc526b1145b66cd0d0a9015702006f9c32cee7e84",
-      "size": 4917,
-      "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
+      "path": "bili-v1.1.1/bili.zip",
+      "sha256": "b5e5e6e6883dee16cafa265300b5e4a5f36c84d26dc20c411a039f3a8982ad2f",
+      "size": 4925,
+      "commit": "e3008c3e601b2593e2f0a3e4a98345514ca70dc3"
     },
     {
       "id": "delivery-inbox",
       "name": "投递异常",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "只读查看没送出去/不确定送达的消息（不提供重发），投递台账的排查出口。",
       "category": "system",
       "tags": [
@@ -53,10 +53,10 @@
         "panel"
       ],
       "replacesBuiltin": false,
-      "path": "delivery-inbox-v1.0.0/delivery-inbox.zip",
-      "sha256": "2fd67f91b9b738c809fc06046ef993f2e28d0522f51f1e1de6e3df421cf34d19",
-      "size": 7854,
-      "commit": "75eceb3e4193d968e7244f1dc0bfb6a8500c5c54"
+      "path": "delivery-inbox-v1.0.1/delivery-inbox.zip",
+      "sha256": "fad8e4e4f3827565583ad63696bb162c2ea79bc92a92794706c4b793be3daa7b",
+      "size": 7860,
+      "commit": "e3008c3e601b2593e2f0a3e4a98345514ca70dc3"
     },
     {
       "id": "douyin",
@@ -120,7 +120,7 @@
     {
       "id": "multi-parser",
       "name": "内容解析",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "自动识别消息中的 B站/微博/小红书/知乎/微信/贴吧/番茄/GitHub 等链接，发送无水印图文视频并支持 AI 上下文注入。",
       "category": "tools",
       "tags": [
@@ -140,10 +140,10 @@
         "tools"
       ],
       "replacesBuiltin": false,
-      "path": "multi-parser-v1.0.0/multi-parser.zip",
-      "sha256": "e5d85ab2e82f45cbc2e50b21807d96c54261377c9d828b0f6baa37a33d3ea4bf",
-      "size": 5882,
-      "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
+      "path": "multi-parser-v1.0.1/multi-parser.zip",
+      "sha256": "7d07db337b95df7a4507f8937312084b40adbd11bd6b7810640c777ad5a46883",
+      "size": 5891,
+      "commit": "e3008c3e601b2593e2f0a3e4a98345514ca70dc3"
     },
     {
       "id": "qzone-social",
