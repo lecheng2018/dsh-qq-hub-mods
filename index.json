@@ -1,8 +1,37 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-15T08:24:37.661Z",
+  "generatedAt": "2026-11-15T11:21:36.049Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
+    {
+      "id": "bili",
+      "name": "B站",
+      "version": "1.1.0",
+      "description": "看别人发的 B 站视频；定时自己刷、评论、回评论；抽帧看画面、发截图；按权限改自己的头像 / 签名。",
+      "category": "platform",
+      "tags": [
+        "bili",
+        "bilibili",
+        "video",
+        "comment"
+      ],
+      "author": "lecheng2018",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "storage",
+        "schedule",
+        "tools"
+      ],
+      "replacesBuiltin": false,
+      "path": "bili-v1.1.0/bili.zip",
+      "sha256": "7ad5558945df6e1dd24ece4bc526b1145b66cd0d0a9015702006f9c32cee7e84",
+      "size": 4917,
+      "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
+    },
     {
       "id": "delivery-inbox",
       "name": "投递异常",
@@ -28,6 +57,122 @@
       "sha256": "2fd67f91b9b738c809fc06046ef993f2e28d0522f51f1e1de6e3df421cf34d19",
       "size": 7854,
       "commit": "75eceb3e4193d968e7244f1dc0bfb6a8500c5c54"
+    },
+    {
+      "id": "douyin",
+      "name": "刷抖音",
+      "version": "2.0.0",
+      "description": "专用浏览器刷抖音：看推荐、点赞、评论、分享给主人；别人发来链接能点开看。",
+      "category": "platform",
+      "tags": [
+        "douyin",
+        "tiktok",
+        "video",
+        "browser"
+      ],
+      "author": "lecheng2018",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "browser",
+        "storage",
+        "schedule",
+        "tools"
+      ],
+      "replacesBuiltin": false,
+      "path": "douyin-v2.0.0/douyin.zip",
+      "sha256": "0bdcf50d89b28b884ca26c5cfad74033786f45e76ba36e6d2456b137a86e5cc2",
+      "size": 4584,
+      "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
+    },
+    {
+      "id": "heybox",
+      "name": "刷小黑盒",
+      "version": "1.0.0",
+      "description": "小黑盒游戏社区：看信息流、读帖子热评、点赞、评论、发帖（可带图）、删自己的帖。",
+      "category": "platform",
+      "tags": [
+        "heybox",
+        "xiaoheihe",
+        "community",
+        "post"
+      ],
+      "author": "lecheng2018",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "storage",
+        "schedule",
+        "tools"
+      ],
+      "replacesBuiltin": false,
+      "path": "heybox-v1.0.0/heybox.zip",
+      "sha256": "74f078539b6651c77e16145b0c5e9d92b7acd543a4424b42f1e063e7a4bdd72b",
+      "size": 6370,
+      "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
+    },
+    {
+      "id": "multi-parser",
+      "name": "内容解析",
+      "version": "1.0.0",
+      "description": "自动识别消息中的 B站/微博/小红书/知乎/微信/贴吧/番茄/GitHub 等链接，发送无水印图文视频并支持 AI 上下文注入。",
+      "category": "tools",
+      "tags": [
+        "link",
+        "parser",
+        "media",
+        "context"
+      ],
+      "author": "lecheng2018",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "storage",
+        "tools"
+      ],
+      "replacesBuiltin": false,
+      "path": "multi-parser-v1.0.0/multi-parser.zip",
+      "sha256": "e5d85ab2e82f45cbc2e50b21807d96c54261377c9d828b0f6baa37a33d3ea4bf",
+      "size": 5882,
+      "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
+    },
+    {
+      "id": "qzone-social",
+      "name": "空间互动",
+      "version": "1.0.0",
+      "description": "逛好友的 QQ 空间点赞评论，回复自己说说下的评论。",
+      "category": "social",
+      "tags": [
+        "qzone",
+        "social",
+        "like",
+        "comment"
+      ],
+      "author": "lecheng2018",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "schedule",
+        "tools",
+        "storage"
+      ],
+      "replacesBuiltin": false,
+      "path": "qzone-social-v1.0.0/qzone-social.zip",
+      "sha256": "32ddc76fc6eca03c1311b5087c540412e17e55a51f3075adb44a43887ff85139",
+      "size": 2370,
+      "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
     },
     {
       "id": "tieba-reader",
