@@ -1,0 +1,26 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 清单校验（PR 要求改动模块升版本）
+        run: node scripts/check.mjs ${{ github.event_name == 'pull_request' && format('--base {0}', github.event.pull_request.base.sha) || '' }}
+      - name: 模块测试（外部 HTTP 一律 mock）
+        run: |
+          shopt -s globstar nullglob
+          files=(modules/**/*.test.mjs)
+          if [ ${#files[@]} -gt 0 ]; then node --test "${files[@]}"; else echo "没有测试文件"; fi
+      - name: 打包冒烟
+        run: node scripts/pack.mjs --out dist
