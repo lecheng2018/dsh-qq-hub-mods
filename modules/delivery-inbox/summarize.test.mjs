@@ -2,8 +2,11 @@
 // 重点守：读不到必须明确报错、异常状态必须完整列出、正常状态不许混进来。
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-import { summarizeDeliveries } from './index.mjs'
+import deliveryInbox, { summarizeDeliveries } from './index.mjs'
 
 const NOW = 1_800_000_000_000
 
@@ -73,4 +76,31 @@ test('排序按进入终态的时间倒序', () => {
     rec({ deliveryId: 'mid', createdAt: NOW - 3000 }),
   ]))
   assert.deepEqual(out.items.map((i) => i.deliveryId), ['new', 'mid', 'old'])
+})
+
+test('壳：路由经 api.lib 读全局台账（不是模块私有沙箱）', async () => {
+  const globalDir = mkdtempSync(join(tmpdir(), 'inbox-global-'))
+  const moduleDir = mkdtempSync(join(tmpdir(), 'inbox-module-'))
+  writeFileSync(join(globalDir, 'deliveries.json'), JSON.stringify(doc([rec({ deliveryId: 'd1', state: 'unknown' })])))
+  let handler
+  const api = {
+    // api.dataDir 是模块私有沙箱（故意指向别处）；壳内部走 lib('core/store.js') 的 dataDir
+    dataDir: (...p) => join(moduleDir, ...p),
+    lib: (key) => {
+      assert.equal(key, 'core/store.js')
+      return {
+        dataDir: (...p) => join(globalDir, ...p),
+        readJson: (file, fallback) => {
+          try { return JSON.parse(readFileSync(file, 'utf8')) } catch { return typeof fallback === 'function' ? fallback() : fallback }
+        },
+      }
+    },
+    route: (path, fn) => { if (path === '/deliveries/exceptions') handler = fn },
+    log: {},
+  }
+  deliveryInbox.setup(api)
+  const out = await handler({ query: {} })
+  assert.equal(out.ok, true)
+  assert.equal(out.items.length, 1)
+  assert.equal(out.file, join(globalDir, 'deliveries.json'))
 })

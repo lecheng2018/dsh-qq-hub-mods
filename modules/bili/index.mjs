@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 export default {
   id: 'bili',
   name: 'B站',
-  version: '1.1.0',
+  version: '1.1.1',
   description: '看别人发的 B 站视频；定时自己刷、评论、回评论；抽帧看画面、发截图；按权限改自己的头像 / 签名（bili_watch / bili_comment / qq_send_shot / bili_set_avatar / bili_set_sign）',
   tab: 'bili',
   setup(api) {

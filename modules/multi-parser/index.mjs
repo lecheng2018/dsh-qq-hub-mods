@@ -29,7 +29,7 @@ export function allowedHere(msg, c = {}) {
 export default {
   id: ID,
   name: '内容解析',
-  version: '1.0.0',
+  version: '1.0.1',
   api: 1,
   tab: 'multiParser',
   description: '自动识别消息中的 B站/微博/小红书/知乎/微信/贴吧/番茄/GitHub等链接，发送无水印图文视频并支持AI上下文注入',

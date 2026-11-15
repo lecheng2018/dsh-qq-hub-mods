@@ -1,14 +1,23 @@
 {
   "id": "multi-parser",
   "name": "内容解析",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "自动识别消息中的 B站/微博/小红书/知乎/微信/贴吧/番茄/GitHub 等链接，发送无水印图文视频并支持 AI 上下文注入。",
   "category": "tools",
-  "tags": ["link", "parser", "media", "context"],
+  "tags": [
+    "link",
+    "parser",
+    "media",
+    "context"
+  ],
   "author": "lecheng2018",
   "license": "MIT",
   "api": 1,
   "minPluginVersion": "1.4.3",
   "requires": [],
-  "capabilities": ["network", "storage", "tools"]
+  "capabilities": [
+    "network",
+    "storage",
+    "tools"
+  ]
 }

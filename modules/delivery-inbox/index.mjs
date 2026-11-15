@@ -97,7 +97,7 @@ export function summarizeDeliveries(doc, { limit = MAX_ITEMS } = {}) {
 export default {
   id: 'delivery-inbox',
   name: '投递异常',
-  version: '1.0.0',
+  version: '1.0.1',
   description: '只读查看没送出去/不确定送达的消息（不提供重发）',
   panel: 'panel.js',
   setup(api) {

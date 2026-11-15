@@ -1,14 +1,24 @@
 {
   "id": "bili",
   "name": "B站",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "看别人发的 B 站视频；定时自己刷、评论、回评论；抽帧看画面、发截图；按权限改自己的头像 / 签名。",
   "category": "platform",
-  "tags": ["bili", "bilibili", "video", "comment"],
+  "tags": [
+    "bili",
+    "bilibili",
+    "video",
+    "comment"
+  ],
   "author": "lecheng2018",
   "license": "MIT",
   "api": 1,
   "minPluginVersion": "1.4.3",
   "requires": [],
-  "capabilities": ["network", "storage", "schedule", "tools"]
+  "capabilities": [
+    "network",
+    "storage",
+    "schedule",
+    "tools"
+  ]
 }
