@@ -1,0 +1,14 @@
+{
+  "id": "delivery-inbox",
+  "name": "投递异常",
+  "version": "1.0.0",
+  "description": "只读查看没送出去/不确定送达的消息（不提供重发），投递台账的排查出口。",
+  "category": "system",
+  "tags": ["delivery", "outbox", "diagnostics"],
+  "author": "lecheng2018",
+  "license": "MIT",
+  "api": 1,
+  "minPluginVersion": "1.4.3",
+  "requires": [],
+  "capabilities": ["storage", "panel"]
+}
