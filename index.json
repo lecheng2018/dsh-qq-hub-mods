@@ -1,8 +1,34 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-15T05:17:00.333Z",
+  "generatedAt": "2026-11-15T08:24:37.661Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
+    {
+      "id": "delivery-inbox",
+      "name": "投递异常",
+      "version": "1.0.0",
+      "description": "只读查看没送出去/不确定送达的消息（不提供重发），投递台账的排查出口。",
+      "category": "system",
+      "tags": [
+        "delivery",
+        "outbox",
+        "diagnostics"
+      ],
+      "author": "lecheng2018",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [
+        "storage",
+        "panel"
+      ],
+      "replacesBuiltin": false,
+      "path": "delivery-inbox-v1.0.0/delivery-inbox.zip",
+      "sha256": "2fd67f91b9b738c809fc06046ef993f2e28d0522f51f1e1de6e3df421cf34d19",
+      "size": 7854,
+      "commit": "75eceb3e4193d968e7244f1dc0bfb6a8500c5c54"
+    },
     {
       "id": "tieba-reader",
       "name": "逛贴吧（只读）",
