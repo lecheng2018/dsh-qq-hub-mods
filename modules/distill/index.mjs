@@ -187,6 +187,7 @@ export default {
         return {
           groupId: gid,
           groupName,
+          isLiveActive: isGroupActive(gid),
           totalCount: raw.length,
           activeCount: active.length,
           candidateCount: candidates.length,
@@ -196,7 +197,10 @@ export default {
         }
       }))
 
-      list.sort((a, b) => (b.activeCount * 1000 + b.historyCount) - (a.activeCount * 1000 + a.historyCount))
+      list.sort((a, b) => {
+        if (a.isLiveActive !== b.isLiveActive) return a.isLiveActive ? -1 : 1
+        return (b.activeCount * 1000 + b.historyCount) - (a.activeCount * 1000 + a.historyCount)
+      })
       return { ok: true, list, settings: api.settings() }
     })
 
