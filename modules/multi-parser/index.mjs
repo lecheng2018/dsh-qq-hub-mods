@@ -2,7 +2,10 @@
 // 1. 自动识别聊天中的链接，提取标题、作者、高清大图、无水印视频；
 // 2. 【AI 注入开关 (feedToAi)】：将解析内容注入大模型上下文；
 // 3. 支持 QQ 合并转发卡片与视频群文件转存，防刷屏。
-// 实现留在插件包内（modules/multi-parser/parser.js、delivery.js），本模块只做接线（壳上商店阶段）。
+
+import { extractUrls as localExtractUrls, parseUrl as localParseUrl } from './parser.mjs'
+import { deliverParseResult as localDeliverParseResult } from './delivery.mjs'
+import { sweepMediaDir as localSweepMediaDir } from './media.mjs'
 
 const ID = 'multi-parser'
 
@@ -29,7 +32,7 @@ export function allowedHere(msg, c = {}) {
 export default {
   id: ID,
   name: '内容解析',
-  version: '1.0.1',
+  version: '1.0.2',
   api: 1,
   tab: 'multiParser',
   description: '自动识别消息中的 B站/微博/小红书/知乎/微信/贴吧/番茄/GitHub等链接，发送无水印图文视频并支持AI上下文注入',
@@ -46,9 +49,10 @@ export default {
     videoOverLimit: 'direct_link',
   },
   setup(api) {
-    const { extractUrls, parseUrl } = api.lib('modules/multi-parser/parser.js')
-    const { deliverParseResult } = api.lib('modules/multi-parser/delivery.js')
-    const { sweepMediaDir } = api.lib('douyin/media.js')
+    const extractUrls = localExtractUrls
+    const parseUrl = localParseUrl
+    const deliverParseResult = localDeliverParseResult
+    const sweepMediaDir = localSweepMediaDir
 
     // chatId -> { at, result } 记录最近解析的内容
     const recentParsed = new Map()
