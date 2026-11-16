@@ -1,5 +1,5 @@
 // modules/distill/panel.js
-// 遵循 QQ Hub 原生面板规范与视觉系统
+// 遵循 QQ Hub 原生面板规范与视觉系统，深度优化移动端窄屏触控与自适应排版
 const { useState, useEffect } = React
 
 const ago = (t) => {
@@ -8,8 +8,145 @@ const ago = (t) => {
   return m < 1 ? '刚刚' : m < 60 ? m + '分钟前' : Math.round(m / 60) + '小时前'
 }
 
+const STYLE_INJECTION = `
+.distill-panel-root {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.distill-meta-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: var(--ab-surface, #f9fafb);
+  border-radius: var(--ab-radius-sm, 6px);
+  border: 1px solid var(--ab-line, #e5e7eb);
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+.distill-meta-stats {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.distill-meta-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.distill-rule-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--ab-line, #e5e7eb);
+  border-radius: var(--ab-radius-sm, 6px);
+  background: var(--ab-card, #ffffff);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  transition: border-color .15s, background .15s;
+}
+.distill-rule-item.locked {
+  background: var(--ab-subtle-accent, rgba(37,99,235,0.04));
+  border-color: color-mix(in srgb, var(--ab-sea, #0284c7) 38%, transparent);
+}
+.distill-rule-item.candidate {
+  border-style: dashed;
+  background: var(--ab-surface, #fafafa);
+}
+.distill-rule-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  border-top: 1px dashed var(--ab-line, #e5e7eb);
+  padding-top: 8px;
+  margin-top: 2px;
+  flex-wrap: wrap;
+}
+.distill-rule-btns {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.distill-form-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.distill-history-grid {
+  display: flex;
+  gap: 16px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+@media (max-width: 720px) {
+  .distill-meta-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    padding: 12px;
+  }
+  .distill-meta-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+  }
+  .distill-meta-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+  }
+  .distill-meta-actions .ab-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .distill-history-grid {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .distill-history-grid .ab-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .distill-form-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .distill-form-row .ab-input,
+  .distill-form-row .ab-btn {
+    width: 100% !important;
+  }
+  .distill-rule-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .distill-rule-btns {
+    justify-content: flex-end;
+    width: 100%;
+  }
+  .distill-tab-btns {
+    display: flex;
+    width: 100%;
+  }
+  .distill-tab-btns .ab-btn {
+    flex: 1;
+    justify-content: center;
+  }
+}
+`
+
 return function DistillPanel({ toast }) {
-  const { Card, Btn, Empty, Select, Row, Seg } = ui
+  const { Card, Btn, Empty, Select, Row } = ui
   const [loading, setLoading] = useState(true)
   const [groups, setGroups] = useState([])
   const [selectedGroup, setSelectedGroup] = useState('')
@@ -220,7 +357,9 @@ return function DistillPanel({ toast }) {
 
   const curGroupInfo = groups.find(g => g.groupId === selectedGroup)
 
-  return h('div', { className: 'ab-grid' },
+  return h('div', { className: 'distill-panel-root' },
+    h('style', null, STYLE_INJECTION),
+
     // 顶部群选择与统计卡片
     h(Card, {
       title: '群友语感规则库',
@@ -232,43 +371,34 @@ return function DistillPanel({ toast }) {
             h(Row, { label: '选择群聊' },
               h(Select, {
                 value: selectedGroup,
+                width: '100%',
                 onChange: (val) => setSelectedGroup(val),
                 options: groups.map(g => ({
                   value: g.groupId,
-                  label: `${g.groupName || g.groupId} (${g.groupId}) — 生效 ${g.activeCount || 0} 条 · 候选 ${g.candidateCount || 0} 条`
+                  label: `${g.groupName || g.groupId} (${g.groupId}) — 生效 ${g.activeCount || 0} 条`
                 }))
               })
             ),
-            curGroupInfo && h('div', {
-              style: {
-                display: 'flex',
-                gap: 16,
-                marginTop: 12,
-                padding: '8px 12px',
-                background: 'var(--ab-surface, #f9fafb)',
-                borderRadius: 6,
-                fontSize: 13,
-                alignItems: 'center',
-                flexWrap: 'wrap'
-              }
-            },
-              h('span', null, '🔥 正式生效：', h('b', { style: { color: 'var(--ab-accent, #2563eb)' } }, curGroupInfo.activeCount || 0, ' 条')),
-              h('span', null, '⏳ 观察候选：', h('b', null, curGroupInfo.candidateCount || 0, ' 条')),
-              h('span', null, '🔒 已锁定：', h('b', null, curGroupInfo.lockedCount || 0)),
-              h('span', null, '待提炼缓存：', h('b', null, curGroupInfo.bufferCount || 0, ' 条')),
-              h('div', { style: { marginLeft: 'auto', display: 'flex', gap: 6 } },
+            curGroupInfo && h('div', { className: 'distill-meta-bar' },
+              h('div', { className: 'distill-meta-stats' },
+                h('span', null, '🔥 生效：', h('b', { style: { color: 'var(--ab-accent, #2563eb)' } }, curGroupInfo.activeCount || 0)),
+                h('span', null, '⏳ 候选：', h('b', null, curGroupInfo.candidateCount || 0)),
+                h('span', null, '🔒 锁定：', h('b', null, curGroupInfo.lockedCount || 0)),
+                h('span', null, '待提炼缓存：', h('b', null, curGroupInfo.bufferCount || 0))
+              ),
+              h('div', { className: 'distill-meta-actions' },
                 h(Btn, {
                   small: true,
                   disabled: actionBusy,
                   title: '把已有近义的规则合并并累加出现频次',
                   onClick: handleConsolidate
-                }, '🔗 聚类合并近义词'),
+                }, '🔗 聚类合并'),
                 h(Btn, {
                   small: true,
                   disabled: actionBusy,
                   title: '删除只出现过 1 次的未锁定偶发噪点',
                   onClick: handlePruneNoise
-                }, '🧹 清理单次噪点'),
+                }, '🧹 清理噪点'),
                 h(Btn, {
                   small: true,
                   disabled: triggering || historyMining,
@@ -284,11 +414,11 @@ return function DistillPanel({ toast }) {
       title: '从本地历史聊天记录提炼',
       desc: '利用本地 chatlog 留存的大量发言流水批量提炼，自动按语义合并同义口癖。'
     },
-      h('div', { style: { display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' } },
+      h('div', { className: 'distill-history-grid' },
         h(Row, { label: '历史时段' },
           h(Select, {
             value: historyDays,
-            width: 130,
+            width: 140,
             onChange: (val) => setHistoryDays(val),
             options: [
               { value: '1', label: '最近 1 天' },
@@ -309,7 +439,7 @@ return function DistillPanel({ toast }) {
             ]
           })
         ),
-        h('div', { style: { marginLeft: 'auto', alignSelf: 'flex-end', marginBottom: 6 } },
+        h('div', { style: { marginLeft: 'auto', marginBottom: 2 } },
           h(Btn, {
             kind: 'primary',
             disabled: historyMining || triggering || (curGroupInfo && curGroupInfo.historyCount < 5),
@@ -324,10 +454,9 @@ return function DistillPanel({ toast }) {
       title: '🧪 模拟测试回复效果（沙盒测试）',
       desc: '输入一句群友发言，现场验证是否命中生效规则，以及未命中时是否保持正常人设不强加戏。'
     },
-      h('div', { style: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10 } },
+      h('div', { className: 'distill-form-row', style: { marginBottom: 12 } },
         h('input', {
-          className: 'ab-input',
-          style: { flex: 1 },
+          className: 'ab-input wide',
           placeholder: '输入你想测试的群友发言（例如：这次重构改动太大了 / 听说某某模型又刷榜了）',
           value: testInput,
           onChange: (e) => setTestInput(e.target.value),
@@ -355,7 +484,7 @@ return function DistillPanel({ toast }) {
                 key: r.id,
                 style: {
                   display: 'inline-block',
-                  margin: '2px 6px',
+                  margin: '2px 4px',
                   padding: '2px 8px',
                   background: 'var(--ab-subtle-accent, #eff6ff)',
                   color: 'var(--ab-accent, #2563eb)',
@@ -389,9 +518,9 @@ return function DistillPanel({ toast }) {
     // 规则库管理展示卡片（区分：正式生效库 vs 待观察候选池）
     selectedGroup && h(Card, {
       title: '群友语感规则管理',
-      desc: `门槛机制：提炼出的规则初始处于观察池，群友累计使用 ≥${minCount} 次或手动点击【⭐ 转正并锁定】后才会实际生效。`
+      desc: `门槛机制：提炼出的规则初始处于观察池，群友累计使用 ≥${minCount} 次或手动点击【⭐ 转正】后才会实际生效。`
     },
-      h('div', { style: { display: 'flex', gap: 10, marginBottom: 12 } },
+      h('div', { className: 'distill-tab-btns', style: { gap: 8, marginBottom: 14 } },
         h(Btn, {
           small: true,
           kind: ruleTab === 'active' ? 'primary' : 'default',
@@ -407,83 +536,69 @@ return function DistillPanel({ toast }) {
       ruleTab === 'active' ? (
         activeRules.length === 0
           ? h(Empty, { icon: '📭', text: '暂无正式生效规则。可以在观察池中挑选优质习惯点击「⭐ 转正」，或点击上方「从历史提炼」。' })
-          : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+          : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
               activeRules.map(r => h('div', {
                 key: r.id,
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 12px',
-                  border: '1px solid var(--ab-line, #e5e7eb)',
-                  borderRadius: 6,
-                  background: r.locked ? 'var(--ab-subtle-accent, rgba(37,99,235,0.04))' : 'transparent',
-                }
+                className: 'distill-rule-item' + (r.locked ? ' locked' : '')
               },
-                h('div', { style: { flex: 1, marginRight: 12 } },
-                  h('div', { style: { fontWeight: 500, fontSize: 13 } },
+                h('div', null,
+                  h('div', { style: { fontWeight: 600, fontSize: 13.5, marginBottom: 3 } },
                     '当 ', h('span', { style: { color: 'var(--ab-accent, #2563eb)' } }, r.situation.replace(/时$/, '')),
                     ' 时：'
                   ),
-                  h('div', { className: 'ab-muted ab-small', style: { marginTop: 2 } },
-                    r.style,
-                    h('span', { style: { marginLeft: 12, opacity: 0.75 } },
-                      `出现 ${r.count || 1} 次${r.injectedCount ? ` · 已注入 ${r.injectedCount} 次` : ''}${r.lastInjectedAt ? ` (${ago(r.lastInjectedAt)})` : ''}`
-                    )
-                  )
+                  h('div', { style: { fontSize: 13, color: 'var(--ab-text, #111827)' } }, r.style)
                 ),
-                h('div', { style: { display: 'flex', gap: 6 } },
-                  h(Btn, {
-                    small: true,
-                    onClick: () => handleToggleLock(r.id)
-                  }, r.locked ? '🔒 已锁' : '🔓 锁定'),
-                  h(Btn, {
-                    small: true,
-                    onClick: () => handleDelete(r.id)
-                  }, '删除')
+                h('div', { className: 'distill-rule-footer' },
+                  h('span', { className: 'ab-muted' },
+                    `群友使用 ${r.count || 1} 次${r.injectedCount ? ` · 已注入 ${r.injectedCount} 次` : ''}${r.lastInjectedAt ? ` (${ago(r.lastInjectedAt)})` : ''}`
+                  ),
+                  h('div', { className: 'distill-rule-btns' },
+                    h(Btn, {
+                      small: true,
+                      onClick: () => handleToggleLock(r.id)
+                    }, r.locked ? '🔒 已锁' : '🔓 锁定'),
+                    h(Btn, {
+                      small: true,
+                      onClick: () => handleDelete(r.id)
+                    }, '删除')
+                  )
                 )
               ))
             )
       ) : (
         candidateRules.length === 0
           ? h(Empty, { icon: '🍃', text: '观察池暂无待沉淀规则，群聊产生新表达后会首先进入此处。' })
-          : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
-              h('div', { className: 'ab-note', style: { marginBottom: 4 } },
+          : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+              h('div', { className: 'ab-note', style: { marginBottom: 6 } },
                 `以下为群友单次或偶发表达。群友再次使用满 ${minCount} 次自动升格生效；你也可以点击【⭐ 转正】直接启用。`
               ),
               candidateRules.map(r => h('div', {
                 key: r.id,
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 12px',
-                  border: '1px dashed var(--ab-line, #d1d5db)',
-                  borderRadius: 6,
-                  background: 'var(--ab-surface, #fafafa)',
-                }
+                className: 'distill-rule-item candidate'
               },
-                h('div', { style: { flex: 1, marginRight: 12 } },
-                  h('div', { style: { fontWeight: 500, fontSize: 13 } },
+                h('div', null,
+                  h('div', { style: { fontWeight: 600, fontSize: 13.5, marginBottom: 3 } },
                     '当 ', h('span', { style: { color: 'var(--ab-text-secondary, #4b5563)' } }, r.situation.replace(/时$/, '')),
                     ' 时：'
                   ),
-                  h('div', { className: 'ab-muted ab-small', style: { marginTop: 2 } },
-                    r.style,
-                    h('span', { style: { marginLeft: 12, color: 'var(--ab-warn, #b45309)' } }, `(出现 ${r.count || 1} / ${minCount} 次)`)
-                  )
+                  h('div', { style: { fontSize: 13, color: 'var(--ab-text, #111827)' } }, r.style)
                 ),
-                h('div', { style: { display: 'flex', gap: 6 } },
-                  h(Btn, {
-                    small: true,
-                    kind: 'primary',
-                    title: '手动将此表达转正为正式生效规则',
-                    onClick: () => handlePromote(r.id)
-                  }, '⭐ 转正并锁定'),
-                  h(Btn, {
-                    small: true,
-                    onClick: () => handleDelete(r.id)
-                  }, '丢弃')
+                h('div', { className: 'distill-rule-footer' },
+                  h('span', { style: { color: 'var(--ab-warn, #b45309)' } },
+                    `群友仅使用 ${r.count || 1} / ${minCount} 次（观察中）`
+                  ),
+                  h('div', { className: 'distill-rule-btns' },
+                    h(Btn, {
+                      small: true,
+                      kind: 'primary',
+                      title: '手动将此表达转正为正式生效规则',
+                      onClick: () => handlePromote(r.id)
+                    }, '⭐ 转正并锁定'),
+                    h(Btn, {
+                      small: true,
+                      onClick: () => handleDelete(r.id)
+                    }, '丢弃')
+                  )
                 )
               ))
             )
@@ -495,17 +610,15 @@ return function DistillPanel({ toast }) {
       title: '手动录入群梗/口癖',
       desc: '如果你想让 Bot 快速学会群里的某个特定梗或说话习惯，可以直接在此录入（直接转正生效并锁定）。'
     },
-      h('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+      h('div', { className: 'distill-form-row' },
         h('input', {
-          className: 'ab-input',
-          style: { flex: 1 },
+          className: 'ab-input wide',
           placeholder: '适用情境（如：聊到抽卡爆死时）',
           value: newSit,
           onChange: (e) => setNewSit(e.target.value)
         }),
         h('input', {
-          className: 'ab-input',
-          style: { flex: 1 },
+          className: 'ab-input wide',
           placeholder: '表达习惯（如：使用“好似开香槟咯”）',
           value: newStyle,
           onChange: (e) => setNewStyle(e.target.value)
