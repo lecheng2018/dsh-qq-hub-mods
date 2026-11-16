@@ -5,7 +5,7 @@ import def, { allowedHere } from './index.mjs'
 
 test('multi-parser：清单与入口契约', () => {
   assert.equal(def.id, 'multi-parser')
-  assert.equal(def.version, '1.0.1')
+  assert.equal(def.version, '1.0.2')
   assert.equal(typeof def.setup, 'function')
   assert.ok(def.description)
   assert.equal(def.defaults.enabled, false, '默认关闭')
@@ -87,4 +87,40 @@ test('multi-parser 壳：视频类结果不注入（她看不到画面），mute
   assert.ok(src.includes('handledAny = true'), 'handledAny 在解析成功后置真')
   const tail = src.slice(src.indexOf('if (handledAny && c.muteAi) return true'))
   assert.ok(tail.includes('return false'), '关掉 muteAi 时必须 return false')
+})
+
+test('multi-parser media：downloadVideo 下载时不带 range: bytes=0- 请求头', async () => {
+  const { downloadVideo } = await import('./media.mjs')
+  const { createServer } = await import('node:http')
+  const { mkdtempSync, statSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  const { tmpdir } = await import('node:os')
+
+  let capturedHeaders = null
+  const server = createServer((req, res) => {
+    capturedHeaders = req.headers
+    const dummyVideo = Buffer.alloc(1024, 0x42)
+    res.writeHead(200, {
+      'Content-Type': 'video/mp4',
+      'Content-Length': String(dummyVideo.length),
+    })
+    res.end(dummyVideo)
+  })
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const port = server.address().port
+  const dir = mkdtempSync(join(tmpdir(), 'dy-mod-mock-'))
+
+  try {
+    const res = await downloadVideo(
+      { awemeId: '123456', title: 'test-video', videoUrls: [`http://127.0.0.1:${port}/video.mp4`] },
+      { dir, referer: 'https://www.douyin.com/' },
+    )
+    assert.ok(capturedHeaders, '服务端应收到请求')
+    assert.equal(capturedHeaders.range, undefined, '不应发送 range 请求头（否则触发 CDN 限速挂起）')
+    assert.equal(capturedHeaders.referer, 'https://www.douyin.com/', '应使用传入的 referer')
+    assert.equal(statSync(res.path).size, 1024, '下载大小一致')
+  } finally {
+    server.close()
+  }
 })
