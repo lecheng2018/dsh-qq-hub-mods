@@ -43,7 +43,7 @@ return function Panel({ settings, draftSettings, setSettings, toast }) {
         h('input', { className: 'ab-input wide', type: 'password', autoComplete: 'off', spellCheck: false, value: cfg.cookie || '', placeholder: state?.cookieSet || settings.cookieSet ? '已保存，不回显；留空不修改（新 Cookie 填入后底部保存设置）' : '粘贴 Cookie → 底部保存设置 → 检查登录；无需另点登录', onChange: e => set('cookie', e.target.value) })),
       ),
     h(ui.Card, { title: '贴吧配置', desc: '只搜索、看帖；有兴趣时分享给主人私聊。不发帖、不回帖、不点赞。' },
-      h(ui.Row, { label: '浏览的贴吧', hint: '可选，每行一个或逗号分隔；留空从首页推荐、热门帖子中挑选。主动分享和定时浏览共用配置。' },
+      h(ui.Row, { label: '浏览的贴吧', hint: '可选，每行一个或逗号分隔。填了吧名就轮流逛这些吧；留空才从首页推荐、热门帖子中挑选——首页靠内置浏览器组件渲染，没有组件时读不到，定时浏览只会提示你先填吧名。主动分享和定时浏览共用配置。' },
         h('textarea', { className: 'ab-textarea', value: cfg.bars || '', placeholder: '留空：首页推荐与热门\n也可指定：使命召唤、图拉丁', onChange: e => set('bars', e.target.value) })),
       h(ui.Row, { label: '兴趣偏好', hint: '留空时结合她的人格挑选。' }, h('textarea', { className: 'ab-textarea', value: cfg.interests || '', onChange: e => set('interests', e.target.value) })),
       h(ui.Row, { label: '定时自己去刷' }, h(ui.Switch, { on: Boolean(cfg.autoBrowse), onChange: value => set('autoBrowse', value) })),

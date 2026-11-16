@@ -75,5 +75,6 @@ test('without browser component imported cookies are checked through HTTP and re
   const client=createTieba({getCookie:()=> 'BDUSS=manual-cookie',browserAvailable:()=>false,renderPage:async()=>{throw Error('must not run a browser');},searchWeb:async()=>({sources:[]}),
     fetchImpl:async(url,options)=>{calls.push(options.headers.cookie);return new Response(String(url).includes('json_userinfo')?JSON.stringify({data:{user_name:'test-user'}}):fixture('forum-legacy.html'));}});
   assert.equal((await client.account()).loggedIn,true);assert.equal((await client.browse('测试')).mode,'direct');
-  assert.deepEqual(calls,['BDUSS=manual-cookie','BDUSS=manual-cookie']);
+  // 手机版列表页先读（现在是唯一还服务端渲染的列表），解析不出再退回 PC 版；每条请求都只带贴吧 Cookie。
+  assert.ok(calls.length >= 2);assert.ok(calls.every(c=>c==='BDUSS=manual-cookie'));
 });

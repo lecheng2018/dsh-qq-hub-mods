@@ -1,4 +1,9 @@
-import { load } from './html-dom.mjs';
+import { load, htmlToText } from './html-dom.mjs';
+
+// 2026-11 起贴吧 PC 版（/、/f、/p/<tid>）对非浏览器 UA 只回前端空壳（约 7–11 KB，无帖子节点），
+// 仍服务端渲染的只有手机版 /mo/q/m（kw= 列表，kz= 帖子）。所以 HTTP 读取一律先走手机版。
+const UA_PC = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36';
+const UA_MOBILE = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 
 export const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 export const cleanTitle = raw => clean(raw)
@@ -15,8 +20,15 @@ export function postUrl(raw) {
   let u;
   try { u = new URL(s, 'https://tieba.baidu.com'); } catch { return null; }
   if (u.protocol !== 'https:' || u.hostname !== 'tieba.baidu.com' || u.port || u.username || u.password) return null;
+  // 手机版列表的链接带 ?lp=...&mo_device=1，PC 版带 ?pn=2，都必须归一成裸帖地址。
   const m = u.pathname.match(/^\/p\/(\d{5,20})\/?$/);
-  return m ? `https://tieba.baidu.com/p/${m[1]}` : null;
+  if (m) return `https://tieba.baidu.com/p/${m[1]}`;
+  // 手机版帖子页形如 /mo/q/m?kz=<tid>（部分场景是 tid=）。
+  if (u.pathname.replace(/\/+$/, '') === '/mo/q/m') {
+    const tid = u.searchParams.get('kz') || u.searchParams.get('tid');
+    if (tid && /^\d{5,20}$/.test(tid)) return `https://tieba.baidu.com/p/${tid}`;
+  }
+  return null;
 }
 export function cookieHeader(raw) {
   if (/[\r\n]/.test(String(raw || ''))) throw new Error('Cookie 不能含换行。');
@@ -50,6 +62,47 @@ export function parseList(html, mode = 'forum') {
   });
   return out.slice(0, 8);
 }
+// 手机版列表页（/mo/q/m?kw=）：每条是 a.ti_item，标题在 .ti_title，角标在 .ti_title_icon。
+export function parseMobileList(html, bar = '') {
+  const $ = checkPage(html);
+  const out = [];
+  $('a.ti_item').each((_i, el) => {
+    const a = $(el);
+    const url = postUrl(a.attr('href'));
+    const box = a.find('.ti_title').first().clone();
+    box.find('.ti_title_icon').remove();
+    const title = cleanTitle(box.text() || a.attr('title'));
+    if (!url || !title || out.some((p) => p.url === url)) return;
+    out.push({ url, title, snippet: '', bar, imageCount: a.find('.medias_wrap img').length,
+      source: `贴吧${bar ? `「${bar}」吧` : ''}列表（手机版网页，尚未读取正文）` });
+  });
+  return out.slice(0, 12);
+}
+
+// 手机版帖子页（/mo/q/m?kz=<tid>）：楼层是 li.j_post_list_item，正文在 .content，
+// 楼中楼（.fr_list）、图片占位（.pb_less_imgs）要剔除，只留这一楼的文字。
+export function parseMobileThread(html, url) {
+  const $ = checkPage(html);
+  const title = cleanTitle(nodeText($('.post_title_embed').first()) || documentTitle($));
+  const posts = [];
+  $('.j_post_list_item').each((_i, el) => {
+    const root = $(el);
+    const content = root.find('.content').first().clone();
+    if (!content.length) return;
+    content.find('.pb_less_imgs, .fr_list, .lzl_list, .lzl_wrap, .post_bottom_tip, script, style, noscript').remove();
+    content.find('br').replaceWith('\n');
+    const text = clean(content.text());
+    if (!text) return;
+    const floor = Number(root.attr('fn')) || posts.length + 1;
+    posts.push({ author: clean(root.find('.user_name').first().text()), floor,
+      section: floor === 1 ? '楼主正文' : '可见回复（手机版网页，按楼层顺序，未展开楼中楼）',
+      text: text.slice(0, 2500) });
+  });
+  if (!posts.length) throw new Error('未读到帖子正文，可能需要登录、帖子已删除或页面结构已变化。');
+  return { url, title, posts: posts.slice(0, 10), imageCount: $('.pb_img_item').length,
+    source: '贴吧正文（手机版网页，第 1 页，最多 10 楼）' };
+}
+
 export function parseHome(html) {
   const $ = checkPage(html);
   const seen = new Set(); const items = [];
@@ -108,12 +161,12 @@ export function parsePost(html, url) {
 }
 export function createTieba({ getCookie, searchWeb, fetchImpl = fetch, renderPage, browserAvailable = () => true, signal }) {
   const assertActive = () => signal?.throwIfAborted();
-  async function request(path) {
+  async function request(path, { mobile = false } = {}) {
     assertActive();
     const url = new URL(path, 'https://tieba.baidu.com');
     if (url.origin !== 'https://tieba.baidu.com') throw new Error('只允许访问百度贴吧。');
     const res = await fetchImpl(url, { method: 'GET', redirect: 'manual',
-      headers: { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36',
+      headers: { 'user-agent': mobile ? UA_MOBILE : UA_PC,
         referer: 'https://tieba.baidu.com/', cookie: cookieHeader(getCookie()) }, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(20000)]) : AbortSignal.timeout(20000) });
     if (res.status >= 300 && res.status < 400) throw new Error('贴吧要求跳转或登录，请先在浏览器打开贴吧并完成登录/验证。');
     if (!res.ok) throw new Error(`贴吧返回 HTTP ${res.status}`);
@@ -135,18 +188,23 @@ export function createTieba({ getCookie, searchWeb, fetchImpl = fetch, renderPag
   }
   return {
     async home() {
-      try {
-        if (renderPage && browserAvailable()) {
+      if (renderPage && browserAvailable()) {
+        try {
           const page = await renderPage('https://tieba.baidu.com/', 'home');
           assertActive();
           const items = page.html ? parseHome(page.html) : (page.links || []).map(p => ({ ...p, url: postUrl(p.url), source: '贴吧首页列表（尚未读取正文）' })).filter(p => p.url && p.title).slice(0, 12);
-          if (!items.length) throw new Error('贴吧首页没有可解析的帖子，可能尚未加载、需要验证或页面结构变化');
-          return { ok: true, mode: 'browser', origin: 'home', items };
-        }
+          if (items.length) return { ok: true, mode: 'browser', origin: 'home', items };
+        } catch { assertActive(); }
+      }
+      try {
         const items = parseHome(await request('/'));
-        if (!items.length) throw new Error('贴吧首页没有可解析的帖子');
-        return { ok: true, mode: 'direct', origin: 'home', items };
-      } catch (error) { return { ...await indexed('site:tieba.baidu.com/p/ 热门帖子', error.message), origin: 'indexed' }; }
+        if (items.length) return { ok: true, mode: 'direct', origin: 'home', items };
+      } catch { assertActive(); }
+      // 首页（/、/f、/p）都换成前端空壳后没有服务端列表；如实说明，不假装浏览过。
+      const result = await indexed('site:tieba.baidu.com/p/ 百度贴吧 热门帖子', '贴吧首页已改为前端渲染');
+      if (result.items.length) return { ...result, origin: 'indexed' };
+      return { ok: false, mode: 'none', origin: 'none', items: [],
+        message: '贴吧首页已改为前端渲染，没有内置浏览器组件时读不到首页。请在设置里填写关注的吧名（例如 deepseek），或直接说“逛某某吧”。' };
     },
     async account() {
       assertActive();
@@ -171,8 +229,8 @@ export function createTieba({ getCookie, searchWeb, fetchImpl = fetch, renderPag
         const results = json.data?.post_list;
         if (Array.isArray(results)) {
           const items = results.filter(p => !bar || clean(p.forum_name) === clean(bar).replace(/吧$/, '')).map(p => ({
-            url: postUrl(String(p.tid)), title: clean(load(String(p.title || '')).text()),
-            snippet: clean(load(String(p.content || '')).text()).slice(0, 1000),
+            url: postUrl(String(p.tid)), title: clean(htmlToText(String(p.title || ''))),
+            snippet: clean(htmlToText(String(p.content || ''))).slice(0, 1000),
             bar: p.forum_name, source: '贴吧搜索接口（实时结果摘要，尚未读取全文）',
           })).filter(p => p.url).slice(0, 8);
           return { ok: true, mode: 'direct', items };
@@ -196,8 +254,9 @@ export function createTieba({ getCookie, searchWeb, fetchImpl = fetch, renderPag
     async browse(bar) {
       const name = clean(bar).replace(/吧$/, '');
       if (!name || name.length > 60) throw new Error('请填写 1～60 字的贴吧名称。');
-      try {
-        if (renderPage && browserAvailable()) {
+      let firstError;
+      if (renderPage && browserAvailable()) {
+        try {
           const page = await renderPage('https://tieba.baidu.com/f?' + new URLSearchParams({ kw: name, ie: 'utf-8' }), 'browse');
           assertActive();
           if (page.html) {
@@ -210,11 +269,19 @@ export function createTieba({ getCookie, searchWeb, fetchImpl = fetch, renderPag
             .filter(p => p.url && p.title && !seen.has(p.url) && seen.add(p.url)).slice(0, 8);
           if (!items.length) throw new Error('浏览器未加载出帖子列表，可能需要登录或安全验证');
           return { ok: true, mode: 'browser', bar: name, items };
-        }
+        } catch (e) { firstError = e; assertActive(); }
+      }
+      // 没有内置浏览器：手机版列表页仍是服务端渲染，先读它；PC 版只作兜底（现已多为前端空壳）。
+      try {
+        const items = parseMobileList(await request('/mo/q/m?' + new URLSearchParams({ kw: name, ie: 'utf-8' }), { mobile: true }), name);
+        if (items.length) return { ok: true, mode: 'direct', bar: name, items };
+        firstError ??= new Error('手机版贴吧列表没有可解析的帖子');
+      } catch (e) { firstError = e; assertActive(); }
+      try {
         const items = parseList(await request('/f?' + new URLSearchParams({ kw: name, ie: 'utf-8' })));
-        if (!items.length) throw new Error('贴吧列表未返回可解析的帖子');
-        return { ok: true, mode: 'direct', bar: name, items };
-      } catch (e) { return { ...await indexed(`site:tieba.baidu.com/p/ "${name}吧"`, e.message), bar: name }; }
+        if (items.length) return { ok: true, mode: 'direct', bar: name, items };
+      } catch (e) { firstError = e; assertActive(); }
+      return { ...await indexed(`site:tieba.baidu.com/p/ "${name}吧"`, firstError?.message || '贴吧列表未返回可解析的帖子'), bar: name };
     },
     async read(link) {
       const url = postUrl(link); if (!url) throw new Error('请输入 https://tieba.baidu.com/p/帖子编号，只允许读取贴吧帖子。');
@@ -228,7 +295,18 @@ export function createTieba({ getCookie, searchWeb, fetchImpl = fetch, renderPag
           return { ok: true, mode: 'browser', url, title: cleanTitle(page.title), posts, imageCount: page.imageCount || 0,
             source: '贴吧正文（浏览器实际加载内容，最多10段，未展开全部楼中楼）' };
         }
-        return { ok: true, ...parsePost(await request(url), url) };
+        // PC 版帖子页已改为前端空壳；手机版 /mo/q/m?kz=<tid> 仍是服务端渲染，先读它。
+        const tid = url.match(/\/p\/(\d{5,20})/)?.[1];
+        let firstError;
+        if (tid) {
+          try {
+            const mobile = parseMobileThread(await request('/mo/q/m?' + new URLSearchParams({ kz: tid }), { mobile: true }), url);
+            if (mobile.posts.length) return { ok: true, mode: 'direct', ...mobile };
+          } catch (e) { firstError = e; assertActive(); }
+        }
+        try {
+          return { ok: true, mode: 'direct', ...parsePost(await request(url), url) };
+        } catch (e) { throw firstError || e; }
       }
       catch (e) { return { ok: false, url, message: e.message + '。未读取到正文，不能声称已看帖。' }; }
     },
