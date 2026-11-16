@@ -1,8 +1,8 @@
 {
   "id": "tieba-reader",
   "name": "逛贴吧（只读）",
-  "version": "1.5.0",
-  "description": "支持登录 Cookie、搜帖看帖、配置贴吧定时浏览，有兴趣时给主人分享；不发帖、不回帖。",
+  "version": "1.5.1",
+  "description": "支持登录 Cookie、搜帖看帖、配置贴吧定时浏览并分享；定时浏览请先在面板填写关注的吧名——贴吧首页需内置浏览器组件才能读，没有组件时读不到首页；只读，不发帖不回帖。",
   "category": "social",
   "tags": [
     "tieba",

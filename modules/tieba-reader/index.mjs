@@ -4,7 +4,7 @@ import { createTieba, barNames, clean, cleanTitle } from './tieba.mjs';
 import { createBrowserReader } from './browser-client.mjs';
 
 export default {
-  id: 'tieba-reader', name: '逛贴吧（只读）', version: '1.5.0', api: 1,
+  id: 'tieba-reader', name: '逛贴吧（只读）', version: '1.5.1', api: 1,
   description: '支持登录 Cookie、搜帖看帖、配置贴吧定时浏览，有兴趣时给主人分享；不发帖、不回帖。',
   panel: 'panel.js',
   defaults: { enabled: true, cookie: '', bars: '', interests: '', autoBrowse: false, intervalMinutes: 30, maxSharesPerDay: 3, startHour: 9, endHour: 23 },
@@ -43,7 +43,7 @@ export default {
         api.defineTool({ name: 'tieba_search', description: '在百度贴吧搜索帖子。用户说去贴吧搜某件事时使用。被验证拦截时回退到搜索引擎收录，结果会注明限制。',
           properties: { query: { type: 'string', description: '搜索关键词' }, bar: { type: 'string', description: '可选，限定贴吧名' } }, required: ['query'],
           execute: async ({ query, bar }) => wrap(await api.use('tieba-reader').search(query, bar)) }),
-        api.defineTool({ name: 'tieba_browse', description: '逛指定贴吧，获取可读帖子列表。不填吧名则浏览贴吧首页推荐、热门帖子。只看，不发帖不回帖。',
+        api.defineTool({ name: 'tieba_browse', description: '逛指定贴吧，获取可读帖子列表。不填吧名则尝试贴吧首页推荐、热门帖子（没有内置浏览器时首页读不到，需填吧名）。只看，不发帖不回帖。',
           properties: { bar: { type: 'string', description: '可选，贴吧名，例如 deepseek；留空浏览首页' } },
           execute: async ({ bar }) => wrap(await api.use('tieba-reader').browse(bar)) }),
         api.defineTool({ name: 'tieba_read', description: '打开贴吧帖子读取第一页正文和回复，最多 10 楼。看不到正文时如实说明。',
@@ -97,8 +97,11 @@ export default {
         if (list.mode === 'indexed') sourceLabel = bar ? `${bar}吧的搜索收录` : '贴吧搜索收录';
         const origin = list.mode === 'indexed' ? 'indexed' : bar ? 'bar' : 'home';
         if (!canContinue()) return stopped();
-        const fresh = list.items.filter((p) => !state.seen.includes(p.url)).slice(0, 5);
-        if (!fresh.length) { state.lastResult = `${sourceLabel}：没有新的可读候选帖子`; return { ok: true, shared: 0, message: state.lastResult }; }
+        const fresh = (list.items || []).filter((p) => !state.seen.includes(p.url)).slice(0, 5);
+        if (!fresh.length) {
+          state.lastResult = list.message || `${sourceLabel}：没有新的可读候选帖子`;
+          return list.ok === false ? blocked(state.lastResult) : { ok: true, shared: 0, message: state.lastResult };
+        }
         const read = [];
         stage = '读取帖子正文';
         for (const item of fresh.slice(0, 2)) { const r = await tieba.read(item.url); if (!canContinue()) return stopped(); if (r.ok) read.push({ ...r, bar: item.bar || bar, section: item.section || '' }); }
@@ -173,6 +176,6 @@ export default {
       const result = await tieba[method](...args);
       return api.settings().enabled === false || disposed ? blocked('贴吧功能已关闭') : result;
     };
-    return { version: '1.5.0', tick, run, search: enabledRead('search'), browse: bar => String(bar || '').trim() ? enabledRead('browse')(bar) : enabledRead('home')(), read: enabledRead('read'), browserStatus: () => browser.status?.() || {}, state: () => ({ ...state }) };
+    return { version: '1.5.1', tick, run, search: enabledRead('search'), browse: bar => String(bar || '').trim() ? enabledRead('browse')(bar) : enabledRead('home')(), read: enabledRead('read'), browserStatus: () => browser.status?.() || {}, state: () => ({ ...state }) };
   },
 };

@@ -223,6 +223,10 @@ class Collection {
   }
 }
 
+// 片段（例如贴吧搜索接口里的 HTML 字符串）取纯文本：parseHTML 的根节点就是文档，
+// 不需要 body 选择器，也不会因嵌套重复计数。
+export const htmlToText = (html) => textOf(parseHTML(html))
+
 export function load(html) {
   const root = parseHTML(html)
   const $ = (arg) => {
