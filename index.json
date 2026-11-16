@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-15T11:46:44.689Z",
+  "generatedAt": "2026-11-16T11:49:43.603Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
     {
@@ -57,6 +57,34 @@
       "sha256": "fad8e4e4f3827565583ad63696bb162c2ea79bc92a92794706c4b793be3daa7b",
       "size": 7860,
       "commit": "e3008c3e601b2593e2f0a3e4a98345514ca70dc3"
+    },
+    {
+      "id": "distill",
+      "name": "群友蒸馏（测试版）",
+      "version": "1.0.0-beta.1",
+      "description": "【测试版】移植 MaiBot 语感提炼机制，高信噪比提取群友接话习惯与口癖，设置频次门槛，绝不强行加戏。",
+      "category": "persona",
+      "tags": [
+        "beta",
+        "distill",
+        "maibot",
+        "persona",
+        "style"
+      ],
+      "author": "lecheng2018",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.0",
+      "requires": [],
+      "capabilities": [
+        "storage",
+        "panel"
+      ],
+      "replacesBuiltin": false,
+      "path": "distill-v1.0.0-beta.1/distill.zip",
+      "sha256": "98edf75b71afe02664de0c1a8829c1e2243a8b0cc754701c7cde0dc841d1d2fd",
+      "size": 21053,
+      "commit": "894f137c94aefec3539de4d5efe68ecb27334aea"
     },
     {
       "id": "douyin",
