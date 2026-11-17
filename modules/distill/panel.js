@@ -375,11 +375,41 @@ return function DistillPanel({ toast }) {
                 onChange: (val) => setSelectedGroup(val),
                 options: groups.map(g => ({
                   value: g.groupId,
-                  label: `${g.groupName || g.groupId} (${g.groupId}) — 生效 ${g.activeCount || 0} 条`
+                  label: `${g.isLiveActive ? '🟢 [实时生效]' : '⚪ [未开启实时]'} ${g.groupName || g.groupId} (${g.groupId}) — 生效 ${g.activeCount || 0} 条`
                 }))
               })
             ),
             curGroupInfo && h('div', { className: 'distill-meta-bar' },
+              h('div', { style: { width: '100%', display: 'flex', alignItems: 'center', marginBottom: 2 } },
+                curGroupInfo.isLiveActive
+                  ? h('span', {
+                      style: {
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '3px 10px',
+                        borderRadius: 4,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        background: 'rgba(34, 197, 94, 0.12)',
+                        color: 'var(--ab-success, #16a34a)',
+                        border: '1px solid rgba(34, 197, 94, 0.25)'
+                      }
+                    }, '🟢 该群当前处于实时生效中（日常聊天自动缓冲提炼，并在回复时按需注入）')
+                  : h('span', {
+                      style: {
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '3px 10px',
+                        borderRadius: 4,
+                        fontSize: 12,
+                        background: 'var(--ab-surface, #f3f4f6)',
+                        color: 'var(--ab-muted, #6b7280)',
+                        border: '1px solid var(--ab-line, #e5e7eb)'
+                      }
+                    }, '⚪ 该群未开启实时生效（上方「指定生效群号」未包含此群；日常聊天不监听不注入，仅供查看与历史提炼）')
+              ),
               h('div', { className: 'distill-meta-stats' },
                 h('span', null, '🔥 生效：', h('b', { style: { color: 'var(--ab-accent, #2563eb)' } }, curGroupInfo.activeCount || 0)),
                 h('span', null, '⏳ 候选：', h('b', null, curGroupInfo.candidateCount || 0)),
