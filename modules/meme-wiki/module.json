@@ -1,0 +1,14 @@
+{
+  "id": "meme-wiki",
+  "name": "梗百科",
+  "version": "0.2.7",
+  "description": "本地梗库：聊天里命中就把词条塞进上下文，她能自然接梗；词条从梗站按需导入或手动添加，不随模块分发。需要 node:sqlite。",
+  "category": "social",
+  "tags": ["梗", "百科", "上下文", "知识库"],
+  "author": "Nightc-c",
+  "license": "MIT",
+  "api": 1,
+  "minPluginVersion": "1.4.3",
+  "requires": [],
+  "capabilities": ["network", "storage", "tools", "panel"]
+}
