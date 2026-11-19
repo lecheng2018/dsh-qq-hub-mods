@@ -1,8 +1,67 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-17T07:14:13.104Z",
+  "generatedAt": "2026-11-19T17:58:21.209Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
+    {
+      "id": "ai-brief",
+      "name": "AI 新闻推送",
+      "version": "2.2.1",
+      "description": "每天早晚 AI 简报：知乎热榜 + Bing 新闻（可选）+ 自定义 RSS + 全网热榜，模型挑重点并带一句吐槽，链接自动转短链；群里发「早报 / 晚报」也能要一份。",
+      "category": "tool",
+      "tags": [
+        "新闻",
+        "早报",
+        "晚报",
+        "热榜",
+        "AI资讯"
+      ],
+      "author": "chienchen-png",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "storage",
+        "schedule",
+        "panel"
+      ],
+      "replacesBuiltin": false,
+      "path": "ai-brief-v2.2.1/ai-brief.zip",
+      "sha256": "a2c02e829d990ea544812d272ea70cec183627399137acf860027332823ffb20",
+      "size": 15266,
+      "commit": "8da607046ec2b554fd80f4a3ab59e4b25b69a20c"
+    },
+    {
+      "id": "api-pool",
+      "name": "关键词调 API 池",
+      "version": "1.6.0",
+      "description": "只在指定群里，群友发某个关键词就自动调用设定好的接口，把返回的文本/图片/视频/音频直接发回群里。纯机械触发，不经过模型、不费 token。",
+      "category": "tool",
+      "tags": [
+        "API",
+        "关键词",
+        "群功能",
+        "图片",
+        "文本"
+      ],
+      "author": "Epiphuany",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "storage",
+        "panel"
+      ],
+      "replacesBuiltin": false,
+      "path": "api-pool-v1.6.0/api-pool.zip",
+      "sha256": "19182044f99621735e86a6a5119e060b348532aa2b84e040e3accc91f419fd1d",
+      "size": 27636,
+      "commit": "8da607046ec2b554fd80f4a3ab59e4b25b69a20c"
+    },
     {
       "id": "bili",
       "name": "B站",
@@ -172,6 +231,36 @@
       "sha256": "2885ac2eec391e6a11ccb409f9d4b529fbc635b54b81bf45df6840d6a33ce044",
       "size": 23049,
       "commit": "f00bc013fea64921f284f667d75013dc983f4573"
+    },
+    {
+      "id": "price-watch",
+      "name": "价格监控",
+      "version": "1.1.0",
+      "description": "盯住商品价格：超级好价、早期好价、降价提醒、本插件记录的历史最低价；/监控价格 与 /查询价格 支持多平台比价，查到的价格按保留时长写进记忆。",
+      "category": "tool",
+      "tags": [
+        "价格",
+        "监控",
+        "比价",
+        "记忆"
+      ],
+      "author": "cdcp998",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "storage",
+        "schedule",
+        "tools",
+        "panel"
+      ],
+      "replacesBuiltin": false,
+      "path": "price-watch-v1.1.0/price-watch.zip",
+      "sha256": "6ba5d2405cec63a6d6800663dc5fc84187354af9592a3a96c1fdc93fc4e58f04",
+      "size": 55012,
+      "commit": "8da607046ec2b554fd80f4a3ab59e4b25b69a20c"
     },
     {
       "id": "qzone-social",
