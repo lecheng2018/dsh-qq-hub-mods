@@ -1,0 +1,14 @@
+{
+  "id": "ai-brief",
+  "name": "AI 新闻推送",
+  "version": "2.2.1",
+  "description": "每天早晚 AI 简报：知乎热榜 + Bing 新闻（可选）+ 自定义 RSS + 全网热榜，模型挑重点并带一句吐槽，链接自动转短链；群里发「早报 / 晚报」也能要一份。",
+  "category": "tool",
+  "tags": ["新闻", "早报", "晚报", "热榜", "AI资讯"],
+  "author": "chienchen-png",
+  "license": "MIT",
+  "api": 1,
+  "minPluginVersion": "1.4.3",
+  "requires": [],
+  "capabilities": ["network", "storage", "schedule", "panel"]
+}
