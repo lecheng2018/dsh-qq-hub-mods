@@ -146,12 +146,12 @@ export function createBrowse({ api, fetcher, memory, ownerQQ, think, sendText, n
       let thinkError = ''
       try {
         out = await think(
-          `你在逛全网热榜，不是聊天，这轮的产出不会自动发出去。你感兴趣的按你自己的性子来，也想想主人会喜欢什么。\n` +
-          `你记得的关于主人的事：\n${about.map((x) => '- ' + (x.text || x)).join('\n') || '（暂无）'}\n` +
+          `你在逛全网热榜，不是聊天，这轮的产出不会自动发出去。你随性逛、挑你真正感兴趣的，也想想对方可能关注什么。\n` +
+          `你记得的关于对方的事：\n${about.map((x) => '- ' + (x.text || x)).join('\n') || '（暂无）'}\n` +
           `最近逛过的榜：\n${recentText}\n\n` +
           `今天的热榜：\n${feed}\n\n` +
           `看完给感想。输出 JSON 数组，每个榜一个对象：` +
-          `{"node":"榜名","feeling":"一句你的真实感受","share":"想私聊分享给主人的话（挑主人可能感兴趣的 1~3 条热点，说人话、别像播报，觉得没什么可分享就空字符串）","remember":"值得记住的一件事（没有就空字符串）"}。` +
+          `{"node":"榜名","feeling":"一句你的真实感受（大白话随口吐槽，别对仗装深沉）","share":"想私聊分享给朋友的话（挑 1~2 条你觉得真正有意思或对方可能关心的热点，说大白话、像平时私聊打字一样自然松弛，严禁'几条可能对你有用'、严禁'1) 2) 3)'列清单、严禁'主人'等仆人客服腔调、严禁新闻播报腔；觉得没啥值得聊的就留空字符串）","remember":"值得记住的一件事（没有就空字符串）"}。` +
           `只输出 JSON。`,
           { title: '逛热榜', timeoutMs: 180000 }
         )
@@ -190,11 +190,12 @@ export function createBrowse({ api, fetcher, memory, ownerQQ, think, sendText, n
           if (seenSet.has(id)) continue
           const src = boards.find((b) => b.node === v.node)
           const head = src?.items?.slice(0, 3).map((x) => x.title).join('、') || ''
+          const suffix = (c.appendSourceHead && head) ? `\n（${v.node}：${head}）` : ''
           // 必须先确认真发出去了再记 seen：被拦/失败的不记账，下一场还有机会再分享
           // （设计稿 §1.4 点名的迁移项——旧代码无视 sendText 返回值无条件记 seen）
           const ok = await deliverShare({
             itemId: `tophub:${id}`,
-            text: `${share}${head ? `\n（${v.node}：${head}）` : ''}`,
+            text: `${share}${suffix}`,
           })
           if (!ok) continue
           seenSet.add(id)

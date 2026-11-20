@@ -124,6 +124,7 @@ return function NewsPushPanel(props) {
             areaField('hotNodes', '热榜榜单（每行一个）', 3),
             areaField('prompt', 'AI 筛选提示词（system）', 10),
             areaField('askTemplate', 'AI 筛选模板（user，可用 {items} {n}）', 8),
+            boolField('showLinks', '附带新闻链接（关掉后不附带长短链，更清爽自然）'),
             boolField('shortLinks', '链接转短链（默认关闭，国内短链常打不开）'),
             status ? h('div', { className: 'ab-small ab-muted', style: { marginTop: 8 } }, '当前时间：' + status.now) : null)
         : null,
