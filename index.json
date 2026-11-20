@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-20T04:23:01.236Z",
+  "generatedAt": "2026-11-20T12:27:24.856Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
     {
@@ -347,7 +347,7 @@
     {
       "id": "tieba-reader",
       "name": "逛贴吧（只读）",
-      "version": "1.5.1",
+      "version": "1.5.2",
       "description": "支持登录 Cookie、搜帖看帖、配置贴吧定时浏览并分享；定时浏览请先在面板填写关注的吧名——贴吧首页需内置浏览器组件才能读，没有组件时读不到首页；只读，不发帖不回帖。",
       "category": "social",
       "tags": [
@@ -367,10 +367,10 @@
         "panel"
       ],
       "replacesBuiltin": false,
-      "path": "tieba-reader-v1.5.1/tieba-reader.zip",
-      "sha256": "61dd9e5ac802a6e24de8d54dfad92748b7e134c5f6d663e579f6c361ad2f5e64",
-      "size": 36925,
-      "commit": "d6c9e65de791f55db9b4d97f9c066a06026b93f0"
+      "path": "tieba-reader-v1.5.2/tieba-reader.zip",
+      "sha256": "4f5104e9a78afd3646cb7abce1efb685698ac01286904774f96a480a89bbf759",
+      "size": 36928,
+      "commit": "baf3ef13e920a80935ba0271b525b58df810c57e"
     },
     {
       "id": "tophub",
