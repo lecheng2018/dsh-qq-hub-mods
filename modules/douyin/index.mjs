@@ -5,7 +5,7 @@
 export default {
   id: 'douyin',
   name: '刷抖音',
-  version: '2.1.0', // 与 module.json 同步（MOD-02：版本与清单一致）
+  version: '2.2.0', // 与 module.json 同步（MOD-02：版本与清单一致）
   description: '专用浏览器刷抖音：看推荐、点赞、评论（可在评论里真·@主人），好玩的分享给主人（抖音私信 / QQ）；别人发来链接能点开看（douyin_watch / douyin_like / douyin_comment / douyin_browse）',
   tab: 'douyin',
   setup(api) {
@@ -18,8 +18,9 @@ export default {
     const setOwner = (owner) => api.setConfig((cur) => ({ ...cur, douyin: { ...cur.douyin, owner } }))
     // 共享浏览器：新宿主给 api.browser()，老宿主没有就退回抖音自己起（createDouyin 里自动挑）
     const dy = createDouyin({
-      getConfig: api.config, setOwner, hub, memory: api.lazy('memory'), log: api.log,
+      getConfig: api.config, getSettings: api.settings, setOwner, hub, memory: api.lazy('memory'), log: api.log,
       browser: api.browser?.() || null,
+      proactive: api.proactive, // 出站治理面：旧宿主没有时 duty 内部可选链降级回 hub.sendText
     })
     api.every(60_000, () => dy.tick(), '刷抖音')
 
