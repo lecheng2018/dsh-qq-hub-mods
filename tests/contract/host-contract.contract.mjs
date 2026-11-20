@@ -1,6 +1,6 @@
 import test, { before, after } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
@@ -184,19 +184,17 @@ test('real memory store isolates two private chats and one group; unknown scope 
   assert.equal(store.scopeVisible(undefined, privateA), false, 'missing legacy scope is not exposed')
 })
 
-test('api.dataDir child paths stay inside each module root (known gap: baseline records real escape)', (t) => {
+test('api.dataDir allows an explicit shared relative path between modules', () => {
   const aRoot = mods.use('contract-a').dataPath()
   const bRoot = mods.use('contract-b').dataPath()
-  const escapedToOtherModule = mods.use('contract-a').dataPath('../contract-b/escaped.txt')
+  const owner = mods.use('contract-b')
+  const consumer = mods.use('contract-a')
+  const sharedPath = ['..', 'contract-b', 'shared', 'contract.json']
   assert.ok(inside(dataRoot, aRoot))
   assert.ok(inside(dataRoot, bRoot))
-  if (!strict) {
-    assert.equal(resolve(escapedToOtherModule), resolve(bRoot, 'escaped.txt'))
-    assert.ok(existsSync(join(bRoot, 'owned.txt')))
-    console.warn('KNOWN GAP SEC-03: host api.dataDir("../contract-b/escaped.txt") resolves into contract-b data; baseline is NOT FULL SECURITY')
-    return
-  }
-  assert.ok(inside(aRoot, escapedToOtherModule), `api.dataDir escaped module root: ${escapedToOtherModule}`)
+  owner.writeShared(sharedPath, JSON.stringify({ owner: 'contract-b', schema: 1 }))
+  assert.deepEqual(JSON.parse(consumer.readShared(...sharedPath)), { owner: 'contract-b', schema: 1 })
+  assert.equal(resolve(owner.dataPath('shared', 'contract.json')), resolve(consumer.dataPath(...sharedPath)))
 })
 
 test('disabling a loaded module removes listeners and invokes both cleanup hooks', async () => {

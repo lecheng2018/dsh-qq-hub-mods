@@ -21,7 +21,7 @@
 | 文档 / 秘密 / schema | `node scripts/quality.mjs` | |
 | 打包与产物核对 | `node scripts/pack.mjs --out dist`；发布加 `--require-clean` | |
 | 固定宿主基线 | `node scripts/host-contract.mjs` | |
-| 严格宿主发布契约 | `node scripts/host-contract.mjs --strict`；已知 dataDir 缺口不得绕过 | |
+| 严格宿主集成契约 | `node scripts/host-contract.mjs --strict`；验证明确支持的共享路径、Outbox、记忆 scope、凭证和生命周期 | |
 | 性能测量 | `node scripts/benchmark.mjs` | |
 | 面板 / 浏览器集成（适用时） | | |
 

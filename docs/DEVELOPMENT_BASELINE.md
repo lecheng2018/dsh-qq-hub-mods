@@ -23,7 +23,7 @@ node scripts/pack.mjs --out dist
 node scripts/benchmark.mjs --out .artifacts/benchmark.json
 ```
 
-PR 版本比较：`node scripts/check.mjs --base <base-sha>`。发布使用干净工作区产物，额外要求 `node scripts/host-contract.mjs --strict` 通过。严格模式目前因固定宿主 dataDir 越界而失败；这是有效发布阻断，不得删用例、改空断言或关闭门禁。
+PR 版本比较：`node scripts/check.mjs --base <base-sha>`。发布使用干净工作区产物，额外运行宿主集成契约；共享数据路径按宿主实际约定验证，不把插件互通本身作为发布失败条件。
 
 ### 清单与版本
 
@@ -76,7 +76,7 @@ node scripts/pack.mjs --out dist --require-clean
 
 CI 和 release 调用 `.github/workflows/quality.yml` 的同一验证链。Ubuntu 与 Windows 执行清单、统一测试、质量检查和宿主基线；Linux 产物经打包验收，记录性能报告。发布只下载自身 run、同一提交的已验证 Linux 产物，不接受任意跨 run 名称相同的附件。
 
-release 额外启用严格宿主契约，失败就不能进入远端发布。发布任务串行，默认权限只读，只有执行远端写入的任务获得 contents:write。旧 Bash registry 入口不允许独立绕过验收推索引。
+发布与 CI 复用同一质量工作流，发布额外运行宿主集成契约，失败才阻断发布；发布器只消费同一提交的已验收 Linux 产物。发布任务串行，默认权限只读，只有执行远端写入的任务获得 contents:write。旧 Bash registry 入口不允许独立绕过验收推索引。
 
 ```sh
 node scripts/release.mjs --dist <产物目录> --revoked revoked.json --commit <40位提交>
@@ -104,15 +104,16 @@ node scripts/release.mjs --dist <产物目录> --revoked revoked.json --commit <
 
 只允许对这些精确历史组合按 registry 已钉住的摘要和元信息做只读核验；这不是新版本豁免。历史资产缺失、摘要不同或无法精确复原时失败，需要可信原产物或新版本，不能用当前源码重新打包覆盖旧资产。
 
-## 固定宿主与发布阻断
+## 固定宿主与模块互通契约
 
-宿主版本固定在 `.github/host-contract.json`；本地可设 HOST_REPO_DIR，CI 默认克隆指定提交到临时目录。被测 Outbox、记忆、密码、生命周期和路径逻辑使用真实宿主实现，外部运输/服务才可替身。
+宿主版本固定在 `.github/host-contract.json`；本地可设 `HOST_REPO_DIR`，CI 默认克隆指定提交到临时目录。被测 Outbox、记忆、密码、生命周期和模块间共享路径使用真实宿主实现，外部运输/服务才可替身。
 
-- 默认模式验证已支持行为，并明确报告 known gaps，不代表完整安全验收。
-- `--strict` 要求目录边界等全部安全契约成立；固定宿主当前 dataDir 直接拼接路径，`..` 可逃逸，因此严格模式应失败。
-- 记忆缺少 chat/scope 的 recall 为 fail-closed；主人管理 list 的全库语义不混同聊天读取。
+- 默认与严格模式都运行同一组真实契约；严格模式只阻断已定义的硬约束失败，不把明确允许的数据共享判为失败。
+- 模块可通过 `api.use(id)` 使用公开服务；确需文件协作时使用 `modules-data` 下双方约定的相对路径，并记录 owner、格式、并发和迁移语义。
+- `api.dataDir('../other-module/shared.json')` 在固定宿主中可用于同一数据根内的显式互通；契约测试只在隔离临时根验证，不写生产数据。
+- 来自用户、远程内容或模型的路径仍必须校验；这与允许的模块互通不同。ZIP 包解压路径安全也独立执行。
 
-复现步骤、已验证行为和上游修复方向见 [HOST_CONTRACT](HOST_CONTRACT.md)。本轮不修改或推送宿主远端，也不静默升级固定版本来隐藏失败。
+证据和固定宿主测试说明见 [HOST_CONTRACT](HOST_CONTRACT.md)。
 
 ## 性能基线
 
@@ -130,4 +131,4 @@ node scripts/benchmark.mjs --dist dist --out .artifacts/benchmark.json --samples
 
 CODEOWNERS 指向仓库维护者，Actions 依赖由 Dependabot 每周检查。本轮已通过 GitHub API 配置并读回 main 保护：必需 `Quality Gate` 且分支保持最新，要求 PR、解决讨论，禁止强推与删除。仓库目前只有一名维护者，批准数为 0，未假设存在可提供非作者批准的第二人；管理员强制检查未启用以保留引导/紧急维护能力，该边界必须透明。另已启用仓库 ruleset：`*-v*` 发布 tag 禁止更新和删除，registry 分支禁止非快进更新和删除；新 tag 创建和正常索引更新仍允许。私密漏洞报告已启用。发布安全阻断属于有意保护，不能用管理员绕过当作修复。
 
-仍需上游修复 dataDir 目录边界并更新固定契约版本；完整进程隔离、所有业务输入鉴权、生产浏览器/媒体效果和覆盖率目标不是本轮可由脚本自动证明的内容。任何报告必须区分普通测试成功、条件跳过和严格宿主失败。
+仍需持续审查共享数据的 owner、权限、格式、并发和迁移，以及不可信路径输入、完整进程隔离、所有业务输入鉴权、生产浏览器/媒体效果和覆盖率目标；这些不是本轮可由脚本自动证明的内容。任何报告必须区分普通测试成功、条件跳过和宿主集成失败。

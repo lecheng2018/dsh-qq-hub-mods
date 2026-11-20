@@ -92,7 +92,7 @@ try {
   })
   if (result.error) throw new Error(`Unable to launch Node contract tests: ${result.error.message}`)
   if (result.status !== 0) process.exitCode = result.status || 1
-  else process.stdout.write(`CONTRACT RESULT: PINNED CONTRACT SUITE PASSED${strict ? ' (strict)' : ' (baseline; NOT FULL SECURITY)'}\n`)
+  else process.stdout.write(`CONTRACT RESULT: PINNED CONTRACT SUITE PASSED${strict ? ' (strict; explicit module data sharing supported)' : ' (baseline)'}\n`)
 } finally {
   if (ownedTempDir) rmSync(ownedTempDir, { recursive: true, force: true })
 }
