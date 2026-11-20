@@ -8,7 +8,7 @@ import { scanHistoryGroups, sampleGroupHistory } from './history-miner.mjs'
 export default {
   id: 'distill',
   name: '群友蒸馏（测试版）',
-  version: '1.0.0-beta.3',
+  version: '1.0.0-beta.4',
   api: 1,
   description: '【测试版】移植 MaiBot 语感提炼机制，高信噪比提取群友接话习惯与口癖，设置频次门槛，绝不强行加戏。',
   panel: 'panel.js',
