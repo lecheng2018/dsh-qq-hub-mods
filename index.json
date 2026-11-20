@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-19T17:58:21.209Z",
+  "generatedAt": "2026-11-20T04:22:37.575Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
     {
@@ -176,6 +176,29 @@
       "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
     },
     {
+      "id": "group-topic-boundary",
+      "name": "群聊话题边界",
+      "version": "1.0.0",
+      "description": "群聊不深入敏感政治话题；明显内容发送前转开话题。普通私聊不变，无额外模型调用。",
+      "category": "manage",
+      "tags": [
+        "群聊",
+        "话题",
+        "政治"
+      ],
+      "author": "b1ghawk119",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [],
+      "replacesBuiltin": false,
+      "path": "group-topic-boundary-v1.0.0/group-topic-boundary.zip",
+      "sha256": "70687776dff0641287f7249e51e49d4b357ebf8cb10ab9a19fde3b57482b6b91",
+      "size": 4634,
+      "commit": "bcb5b18b1d4e8f43a4f35859425fdda12a7530e6"
+    },
+    {
       "id": "heybox",
       "name": "刷小黑盒",
       "version": "1.0.0",
@@ -203,6 +226,36 @@
       "sha256": "74f078539b6651c77e16145b0c5e9d92b7acd543a4424b42f1e063e7a4bdd72b",
       "size": 6370,
       "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
+    },
+    {
+      "id": "meme-wiki",
+      "name": "梗百科",
+      "version": "0.2.7",
+      "description": "本地梗库：聊天里命中就把词条塞进上下文，她能自然接梗；词条从梗站按需导入或手动添加，不随模块分发。需要 node:sqlite。",
+      "category": "social",
+      "tags": [
+        "梗",
+        "百科",
+        "上下文",
+        "知识库"
+      ],
+      "author": "Nightc-c",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "storage",
+        "schedule",
+        "tools",
+        "panel"
+      ],
+      "replacesBuiltin": false,
+      "path": "meme-wiki-v0.2.7/meme-wiki.zip",
+      "sha256": "ab3855e95d618acede4bba489719626837f6f9f6f4565ff76a1b76f01d4d7c92",
+      "size": 34116,
+      "commit": "bcb5b18b1d4e8f43a4f35859425fdda12a7530e6"
     },
     {
       "id": "multi-parser",
@@ -318,6 +371,35 @@
       "sha256": "61dd9e5ac802a6e24de8d54dfad92748b7e134c5f6d663e579f6c361ad2f5e64",
       "size": 36925,
       "commit": "d6c9e65de791f55db9b4d97f9c066a06026b93f0"
+    },
+    {
+      "id": "tophub",
+      "name": "刷热榜",
+      "version": "0.3.1",
+      "description": "热榜巡游：每天定时逛全网热榜（微博/抖音/知乎/头条等），看完写记忆、挑有意思的私聊分享给主人；对外提供 hot()/search() 热点控件。",
+      "category": "platform",
+      "tags": [
+        "热榜",
+        "资讯",
+        "巡游"
+      ],
+      "author": "RookieApe-tao",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.4.3",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "storage",
+        "schedule",
+        "tools",
+        "panel"
+      ],
+      "replacesBuiltin": false,
+      "path": "tophub-v0.3.1/tophub.zip",
+      "sha256": "c9470c65fda28bc389dbdbf8822f89c3b597af36b5bceaf51b84609c7c6e7e40",
+      "size": 18429,
+      "commit": "bcb5b18b1d4e8f43a4f35859425fdda12a7530e6"
     }
   ],
   "revoked": []
