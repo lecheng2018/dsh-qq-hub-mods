@@ -35,6 +35,18 @@ revoked.json           撤回清单（发布过的版本出安全问题时登记
 模块 SDK 的硬约束（宿主强制）：发送必经 Outbox 台账；记忆按会话隔离（fail-closed）；
 `api.dataDir` 沙箱；密钥走 password 字段不进日志。详见 [docs/MODULE_SPEC.md](docs/MODULE_SPEC.md)。
 
+## 开发文档
+
+| 文档 | 用途 |
+| --- | --- |
+| [开发指南](CONTRIBUTING.md) | 环境准备、模块开发、测试、评审和发布流程 |
+| [模块规范](docs/MODULE_SPEC.md) | 现有模块清单与宿主 SDK 约定 |
+| [接口参考](docs/API_REFERENCE.md) | 模块生命周期、SDK、面板桥接及接口证据边界 |
+| [开发基准](docs/DEVELOPMENT_BASELINE.md) | 已核对的环境、CI、脚本参数、发布产物与现有缺口 |
+| [硬性要求](docs/MANDATORY_REQUIREMENTS.md) | 必须满足的贡献规则、验收证据、阻断与例外流程 |
+
+新开发文档以 2026-11-20 的提交 `3c2fadd2b0e2cd9743e4138f551530b763b99d6b` 为核对基准；区分现有自动检查、宿主约定和新增评审要求。文档规则需随 PR 合并采纳，不代表远端 CI 或分支保护已经更新。
+
 ## 本地开发
 
 ```sh
