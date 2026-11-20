@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-20T12:27:24.856Z",
+  "generatedAt": "2026-11-20T15:44:05.282Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
     {
       "id": "ai-brief",
       "name": "AI 新闻推送",
-      "version": "2.2.1",
+      "version": "2.2.2",
       "description": "每天早晚 AI 简报：知乎热榜 + Bing 新闻（可选）+ 自定义 RSS + 全网热榜，模型挑重点并带一句吐槽，链接自动转短链；群里发「早报 / 晚报」也能要一份。",
       "category": "tool",
       "tags": [
@@ -28,10 +28,10 @@
         "panel"
       ],
       "replacesBuiltin": false,
-      "path": "ai-brief-v2.2.1/ai-brief.zip",
-      "sha256": "a2c02e829d990ea544812d272ea70cec183627399137acf860027332823ffb20",
-      "size": 15266,
-      "commit": "8da607046ec2b554fd80f4a3ab59e4b25b69a20c"
+      "path": "ai-brief-v2.2.2/ai-brief.zip",
+      "sha256": "519c0e1bdae961898b2309f43b8af8820be0a6524f399c9cecfaecd6befa7e7f",
+      "size": 15674,
+      "commit": "d76ec5cfb0ac41ba90e63c56b68f7443bcbd60b3"
     },
     {
       "id": "api-pool",
@@ -375,7 +375,7 @@
     {
       "id": "tophub",
       "name": "刷热榜",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "description": "热榜巡游：每天定时逛全网热榜（微博/抖音/知乎/头条等），看完写记忆、挑有意思的私聊分享给主人；对外提供 hot()/search() 热点控件。",
       "category": "platform",
       "tags": [
@@ -396,10 +396,10 @@
         "panel"
       ],
       "replacesBuiltin": false,
-      "path": "tophub-v0.3.1/tophub.zip",
-      "sha256": "c9470c65fda28bc389dbdbf8822f89c3b597af36b5bceaf51b84609c7c6e7e40",
-      "size": 18429,
-      "commit": "bcb5b18b1d4e8f43a4f35859425fdda12a7530e6"
+      "path": "tophub-v0.3.2/tophub.zip",
+      "sha256": "c548710c8867031e5f7114071d46e7f9a6322d5dce339a412f89e71087347f69",
+      "size": 18794,
+      "commit": "d76ec5cfb0ac41ba90e63c56b68f7443bcbd60b3"
     }
   ],
   "revoked": []
