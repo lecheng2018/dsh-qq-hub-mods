@@ -8,7 +8,7 @@ import { createBrowse } from './lib/browse.mjs'
 export default {
   id: 'tophub',
   name: '刷热榜',
-  version: '0.3.1',
+  version: '0.3.2',
   api: 1,
   description: '热榜巡游：每天定时逛全网热榜，看完写记忆、挑有意思的私聊分享给主人；对外提供 hot()/search() 热点控件',
   panel: 'panel.js',
@@ -19,6 +19,7 @@ export default {
     nodesPerTour: 2,                 // 每场逛几个榜（60s 接口怕高频，别贪多）
     itemsPerNode: 15,                // 每个榜喂给她前几条
     shareLimit: 2,                   // 每场最多私聊分享几条，0 = 不分享只逛
+    appendSourceHead: false,         // 默认关闭机械的「\n（榜名：条目1、条目2）」尾巴，去除人机感
   },
   settings: [
     { key: 'enabled', label: '定时逛热榜', type: 'switch' },
@@ -27,6 +28,7 @@ export default {
     { key: 'nodesPerTour', label: '每场逛几个榜', type: 'number', min: 1, max: 6, hint: '接口有频率限制，建议 2~3 个' },
     { key: 'itemsPerNode', label: '每个榜看几条', type: 'number', min: 5, max: 30 },
     { key: 'shareLimit', label: '每场最多分享几条', type: 'number', min: 0, max: 10, hint: '0 = 只看不分享。分享只会发给主人私聊' },
+    { key: 'appendSourceHead', label: '分享附带榜单尾注', type: 'switch', hint: '关闭时只发自然分享语；开启会在末尾追加类似「（微博热搜：标题1、标题2）」' },
   ],
 
   setup(api) {

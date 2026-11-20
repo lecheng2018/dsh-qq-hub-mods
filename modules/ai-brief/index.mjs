@@ -18,6 +18,7 @@ const DEFAULTS = {
   sticker: false,
   banner: false,
   shortLinks: false,
+  showLinks: true,
   // 媒体源：每行「url|来源名」；留空 = 只用 Bing 新闻 + 知乎
   feeds: '',
   // Bing 新闻查询词：留空 = 不用（默认只用知乎热榜 + 全网热榜）
@@ -38,7 +39,7 @@ const DEFAULTS = {
     '刷屏', '爆火',
   ].join(', '),
   prompt: [
-    '你是干饭鱼，一只傲娇、有点懒的鲸鱼娘，替群里挑今天值得看的 AI 资讯。',
+    '你是一个在技术群里潜水冲浪的真实群友，懂点模型和硬件，说话随性自然、爱吐槽。你正在替群里挑今天真正值得聊的 AI/科技新鲜事。',
     '来源是知乎热榜和微博/抖音/头条等全网热榜，优先挑 AI 相关、有讨论度的。',
     '挑的时候按这个优先级：',
     '① **新模型发布**（最高优先）：任何厂商的新模型/新版本——OpenAI、Anthropic(Claude)、Google(Gemini)、DeepSeek、阿里(Qwen)、字节(豆包)、月之暗面(Kimi)、智谱、MiniMax、Meta(Llama)、Mistral、xAI(Grok) 等；关注能力/架构变化、上下文、开源权重、API、定价、订阅、限额。',
@@ -48,16 +49,20 @@ const DEFAULTS = {
     '如果候选里有“新模型/新版本发布”的新闻，**至少选 2 条**（这是最重要的），其余按 ①-④ 均衡挑。',
     '少挑纯论文、纯基准测试、纯参数堆砌的稿子；金融/股价最多一条；同样的事只留一条。',
     '每条还要给一个中文标签，从【模型】【应用】【财报】【融资】【政策】【芯片】【人物】【热点】里选最贴切的一个，标签会显示在标题前面。',
-    '每条写一句不超过 20 字的吐槽，用你自己的口气，别复述标题，别解释新闻。只输出 JSON。',
+    '【极其重要的语言风格要求：彻底去除人机感，说大白话】',
+    '- 每条短评（comment）必须说人话、语气自然松弛（15~40字），直接聊槽点、实际影响或主观感受。',
+    '- 严禁复述标题，严禁新闻公文腔。',
+    '- 严禁营销号标题对仗口号（绝对禁止写「xx狂喜」「xx再升级」「来历成谜」「引人深思」等八股宣传语）。',
+    '- 就像平时群友打字随手点评一样自然随性。只输出 JSON。',
   ].join('\n'),
   askTemplate: [
     '候选新闻：',
     '{items}',
     '',
     '请挑 {n} 条最重要的，优先顺序：① 新模型发布（新版本/能力/开源/API/定价），② 新 AI 产品/应用/工具，③ 公司八卦，④ 网络热点（和①同等关注，别忽略）。',
-    '输出 JSON：{"picks":[{"id":序号,"tag":"模型","comment":"你的吐槽"}],"tomorrow":"明天可以留意的一句话，没有就空字符串"}',
+    '输出 JSON：{"picks":[{"id":序号,"tag":"模型","comment":"你的自然口语短评"}],"tomorrow":"明天群友可以随手留心的一句随想，没有就空字符串"}',
     'tag 只能从【模型】【应用】【财报】【融资】【政策】【芯片】【人物】【热点】里选一个。',
-    '要求：id 必须来自上面列表；tag 必须是上面八个之一；comment 不超过 20 字；不要输出 JSON 以外的东西。',
+    '要求：id 必须来自上面列表；tag 必须是上面八个之一；comment 必须自然口语说人话（严禁八股文和标题党口号，15~40字）；不要输出 JSON 以外的东西。',
   ].join('\n'),
   hotNodes: ['微博热搜', '知乎热榜', '抖音热点'].join('\n'),
   hotNodesEnabled: true,
@@ -197,7 +202,7 @@ function uniq(list) {
 export default {
   id: 'ai-brief',
   name: 'AI 新闻推送',
-  version: '2.2.1',
+  version: '2.2.2',
   api: 1,
   description: '每天早晚 AI 简报（Bing 新闻 + 知乎热榜 + 全网热榜 + 自定义 RSS），模型挑重点并带一句吐槽，群友发「早报 / 晚报」也能要一份',
   panel: 'panel.js',
@@ -325,12 +330,12 @@ export default {
           picks = j.picks
             .map((p) => ({
               item: top[Number(p.id) - 1],
-              comment: String(p.comment || '').slice(0, 24),
+              comment: String(p.comment || '').slice(0, 80),
               tag: TAGS.includes(String(p.tag || '').trim()) ? String(p.tag).trim() : '热点',
             }))
             .filter((p) => p.item)
             .slice(0, n)
-          tomorrow = String(j.tomorrow || '').slice(0, 40)
+          tomorrow = String(j.tomorrow || '').slice(0, 60)
         }
       } catch (e) { api.log?.warn?.('早报提炼失败，用原始标题：' + (e?.message || e)) }
       if (!picks.length) picks = top.slice(0, n).map((item) => ({ item, comment: '', tag: '热点' }))
@@ -343,6 +348,7 @@ export default {
 
     /** 拼消息：序号 + 【标签】 + 标题 / 吐槽 / 链接（长链，短链国内打不开）。 */
     async function formatBrief(kind, picks, tomorrow) {
+      const c = cfg()
       const head = kind === 'morning' ? '【AI 早报】' : '【AI 晚报】'
       const rows = [head]
       let i = 0
@@ -351,8 +357,10 @@ export default {
         const tag = p.tag ? `【${p.tag}】` : ''
         rows.push(`${i}. ${tag}${p.title}`)
         if (p.comment) rows.push(p.comment)
-        const short = await shortLink(p.url)
-        if (short) rows.push(short)
+        if (c.showLinks !== false) {
+          const short = await shortLink(p.url)
+          if (short) rows.push(short)
+        }
       }
       if (kind === 'evening' && tomorrow) rows.push(`明天可以留意：${tomorrow}`)
       return rows.join('\n')
