@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-20T16:12:16.723Z",
+  "generatedAt": "2026-11-20T17:27:41.321Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
     {
@@ -148,8 +148,8 @@
     {
       "id": "douyin",
       "name": "刷抖音",
-      "version": "2.0.0",
-      "description": "专用浏览器刷抖音：看推荐、点赞、评论、分享给主人；别人发来链接能点开看。",
+      "version": "2.1.0",
+      "description": "用共享浏览器刷抖音（一个浏览器进程给所有网页类模块共用）：看推荐、点赞、评论、分享给主人；别人发来链接能点开看。",
       "category": "platform",
       "tags": [
         "douyin",
@@ -170,10 +170,10 @@
         "tools"
       ],
       "replacesBuiltin": false,
-      "path": "douyin-v2.0.0/douyin.zip",
-      "sha256": "0bdcf50d89b28b884ca26c5cfad74033786f45e76ba36e6d2456b137a86e5cc2",
-      "size": 4584,
-      "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
+      "path": "douyin-v2.1.0/douyin.zip",
+      "sha256": "3c63b8fd4d2f30f179bd249a6c64dbbf2a34275a3d8e0e6368ddabbd9d913b07",
+      "size": 4782,
+      "commit": "0f9c71d97f8813c69a9982f61cffb8678bf17e02"
     },
     {
       "id": "group-topic-boundary",
@@ -226,6 +226,35 @@
       "sha256": "74f078539b6651c77e16145b0c5e9d92b7acd543a4424b42f1e063e7a4bdd72b",
       "size": 6370,
       "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
+    },
+    {
+      "id": "hongguo",
+      "name": "刷红果短剧",
+      "version": "0.1.2",
+      "description": "用共享浏览器刷红果短剧：看推荐、记下看过的，刷到好看的用 QQ 私聊告诉主人；看完把标题、画面帧和热评交给模型判断值不值得分享。",
+      "category": "platform",
+      "tags": [
+        "红果短剧",
+        "短剧"
+      ],
+      "author": "fengzhi-97",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.2.0",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "storage",
+        "schedule",
+        "tools",
+        "panel",
+        "browser"
+      ],
+      "replacesBuiltin": false,
+      "path": "hongguo-v0.1.2/hongguo.zip",
+      "sha256": "f82f1d5f4ca3e6b3c01af75e917a69f7415686cbcdf19124e04764c0b608d5b2",
+      "size": 43521,
+      "commit": "0f9c71d97f8813c69a9982f61cffb8678bf17e02"
     },
     {
       "id": "meme-wiki",
@@ -347,8 +376,8 @@
     {
       "id": "tieba-reader",
       "name": "逛贴吧（只读）",
-      "version": "1.5.2",
-      "description": "支持登录 Cookie、搜帖看帖、配置贴吧定时浏览并分享；定时浏览请先在面板填写关注的吧名——贴吧首页需内置浏览器组件才能读，没有组件时读不到首页；只读，不发帖不回帖。",
+      "version": "1.6.1",
+      "description": "支持登录 Cookie、搜帖看帖、配置贴吧定时浏览并分享；定时浏览请先在面板填写关注的吧名；不发帖不回帖。新版与其它网页模块共用宿主共享浏览器。",
       "category": "social",
       "tags": [
         "tieba",
@@ -367,10 +396,10 @@
         "panel"
       ],
       "replacesBuiltin": false,
-      "path": "tieba-reader-v1.5.2/tieba-reader.zip",
-      "sha256": "4f5104e9a78afd3646cb7abce1efb685698ac01286904774f96a480a89bbf759",
-      "size": 36928,
-      "commit": "baf3ef13e920a80935ba0271b525b58df810c57e"
+      "path": "tieba-reader-v1.6.1/tieba-reader.zip",
+      "sha256": "37f32508c587f98f9c552e919cdcddba723f85048e62d5364e2c83406bf8f1bd",
+      "size": 41658,
+      "commit": "0f9c71d97f8813c69a9982f61cffb8678bf17e02"
     },
     {
       "id": "tophub",
@@ -400,6 +429,36 @@
       "sha256": "c548710c8867031e5f7114071d46e7f9a6322d5dce339a412f89e71087347f69",
       "size": 18794,
       "commit": "d76ec5cfb0ac41ba90e63c56b68f7443bcbd60b3"
+    },
+    {
+      "id": "xhs",
+      "name": "刷小红书",
+      "version": "0.3.5",
+      "description": "用共享浏览器刷小红书：逛推荐/搜索、看笔记写记忆、点赞收藏评论（人格生成、每日上限）、认链接、看私信回复；发帖走「草稿 → 确认」。各能力独立开关，默认全关。",
+      "category": "platform",
+      "tags": [
+        "小红书",
+        "笔记",
+        "种草"
+      ],
+      "author": "Aurabot",
+      "license": "MIT",
+      "api": 1,
+      "minPluginVersion": "1.2.0",
+      "requires": [],
+      "capabilities": [
+        "network",
+        "storage",
+        "schedule",
+        "tools",
+        "panel",
+        "browser"
+      ],
+      "replacesBuiltin": false,
+      "path": "xhs-v0.3.5/xhs.zip",
+      "sha256": "0dd4edbd43e4dde18b2ab02c863750ed4b4638d2f885bd1bfcbb8862c99e9fec",
+      "size": 85856,
+      "commit": "0f9c71d97f8813c69a9982f61cffb8678bf17e02"
     }
   ],
   "revoked": []
