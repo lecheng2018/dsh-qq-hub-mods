@@ -1,4 +1,5 @@
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 
 export default {
   id: '__MODULE_ID__',
@@ -17,6 +18,12 @@ export default {
     })
     return {
       dataPath: (...parts) => api.dataDir(...parts),
+      writeShared: (parts, text) => {
+        const path = api.dataDir(...parts)
+        mkdirSync(dirname(path), { recursive: true })
+        writeFileSync(path, text, 'utf8')
+      },
+      readShared: (...parts) => readFileSync(api.dataDir(...parts), 'utf8'),
       sendText: (chatId, text) => api.sendText(chatId, text),
       sendRaw: (chatId, params) => api.onebot('send_private_msg', params, { timeoutMs: 5000 }),
       dispose() {

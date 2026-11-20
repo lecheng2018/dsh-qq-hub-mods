@@ -31,59 +31,40 @@ node scripts/host-contract.mjs --strict
 | 契约 | 结果 |
 | --- | --- |
 | 用户模块真实加载、两个模块数据根隔离 | supported |
+| 模块间通过双方约定的 `modules-data` 相对路径共享文件 | supported |
 | 模块 `sendText` 进入真实 Shared Outbox、OneBot raw 发信动作同样进入台账 | supported |
 | 台账保存真实网关 message id 和来源 | supported |
 | `password` 设置字段面板掩码、空串保留、`null` 清空 | supported |
 | 两个私聊和一个群聊的记忆 scope 隔离 | supported |
 | 无 `chat`/无显式 `scopes` 的记忆检索 fail-closed；无 scope 历史条目不可见 | supported |
 | 模块停用撤销监听器并调用 dispose/onDispose 清理 | supported |
-| `api.dataDir(...parts)` 阻止 `..` 越出模块根目录 | known gap，strict 阻断 |
 
-无 `chat` 的 `memory.list()` 是宿主明确的主人面板全库管理路径，不作为聊天隔离失败；契约测试使用 `recall`、`scopeVisible` 和聊天上下文路径验证隔离。
+## `dataDir` 与模块间共享
 
-## 两种模式
+固定宿主 `api.dataDir(...parts)` 将路径放在公共 `modules-data` 根下，并按模块 id 提供默认子目录。插件间数据共享是支持的协作方式，可以使用 `api.use(id)` 服务，也可以在该数据根内使用双方明确约定的相对路径。越过调用方默认子目录并不自动代表安全漏洞，也不作为发布失败条件。
 
-默认模式会运行全部六个真实契约用例，并把已确认的 `SEC-03` 缺口作为报告输出。成功结论必须理解为：
+契约测试在隔离临时根中验证：`contract-b` 写入共享的 `shared/contract.json`；`contract-a` 通过约定的 `../contract-b/shared/contract.json` 读取并核对内容。不会写入真实用户或宿主数据。使用共享路径时仍需确定 owner、数据 schema、并发/锁和迁移规则。
+
+插件互通不意味着可绕过用户隐私规则。聊天记忆仍由 chat/scope 决定访问；跨插件共享文件也不授予任意聊天上下文读取这些文件的权限。用户、远程页面或模型提供的值进入文件路径前仍要做输入校验。ZIP 包内的解压路径检查继续强制，它保护安装边界，与运行期的有意共享不同。
+
+## 验证模式
+
+默认模式和 `--strict` 都运行完整的真实集成契约。严格模式用于阻断已定义的契约失败，包括 Outbox、记忆隔离、password 处理、生命周期和文档化的数据共享路径；它不会把允许的插件互通标为失败，也不代表恶意代码沙箱。
+
+结果应显示六项用例全部通过：
 
 ```text
-PINNED CONTRACT SUITE PASSED (baseline; NOT FULL SECURITY)
+# tests 6
+# pass 6
+# fail 0
+# skipped 0
+CONTRACT RESULT: PINNED CONTRACT SUITE PASSED (strict; explicit module data sharing supported)
 ```
 
-`--strict` 将同一越界行为作为真实失败断言。当前固定宿主预期为 5 个通过、1 个失败并返回非零；这不是 skip，也不是 expected failure 被吞掉。发布工作流应把 strict 非零视为阻断，直到宿主修复后在新的固定 SHA 上更新配置。
-
-## SEC-03 复现与上游修复草案
-
-固定宿主当前模块 API 的实现等价于：
-
-```js
-dataDir: (...parts) => join(dataDir('modules-data', id), ...parts)
-```
-
-因此模块 `contract-a` 请求 `api.dataDir('../contract-b/escaped.txt')` 时，返回路径落入 `contract-b` 数据根。契约测试只检查返回路径，没有在越界路径写文件。
-
-建议上游在 `src/core/modules.js` 的 API 边界收紧子路径：
-
-```js
-const root = resolve(dataDir('modules-data', id))
-const child = resolve(root, ...parts)
-if (child !== root && !child.startsWith(root + sep)) {
-  throw new Error(`模块 ${id} 的 dataDir 路径越界`)
-}
-return child
-```
-
-上游修复还应决定并测试符号链接边界（若模块目录允许符号链接，应使用真实路径校验或明确拒绝），再把修复后的提交 pin 到新的 `host-contract.json` SHA。此仓不修改宿主实现，也不把该缺口标成通过。
-
-## 证据命令
-
-使用本地固定宿主时：
+## 本地执行
 
 ```text
 set HOST_REPO_DIR=C:\path\to\clean\dsh-qq-hub
 node scripts/host-contract.mjs
 node scripts/host-contract.mjs --strict
 ```
-
-基线当前结果：6/6 passed，包含 `NOT FULL SECURITY` 缺口报告。
-
-strict 当前结果：5/6 passed，`SEC-03` 越界断言失败，进程非零退出。

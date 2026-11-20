@@ -2,7 +2,7 @@
 
 审阅日期：2026-11-20；市场仓库快照：`3c2fadd2b0e2cd9743e4138f551530b763b99d6b`。
 
-本文区分三类证据：**规范**为 [MODULE_SPEC](MODULE_SPEC.md) 的约定；**用法**为本仓代码依赖的调用或模块自身返回；**待验证**为必须对照目标宿主确认的行为。2026-11-20 新增固定宿主真实实现测试，具体已验证行为与 dataDir 缺口见 [HOST_CONTRACT](HOST_CONTRACT.md)；本表仍不是宿主完整公共 API。模块用法、测试替身和第三方 HTTP 服务不能代替契约保证。
+本文区分三类证据：**规范**为 [MODULE_SPEC](MODULE_SPEC.md) 的约定；**用法**为本仓代码依赖的调用或模块自身返回；**待验证**为必须对照目标宿主确认的行为。固定宿主真实测试覆盖 Outbox、记忆 scope、密码、生命周期和明确的数据共享路径；本表仍不是宿主完整公共 API。模块用法、测试替身和第三方 HTTP 服务不能代替契约保证。
 
 发布 CLI、市场索引和撤回清单的数据契约另见 [开发基准](DEVELOPMENT_BASELINE.md)。接口改动与安全门禁见 [硬性要求](MANDATORY_REQUIREMENTS.md)。
 
@@ -130,7 +130,7 @@ api.tool(() => api.settings().enabled ? [api.defineTool({
 
 | 调用 | 可观察用法 | 边界 |
 | --- | --- | --- |
-| `api.dataDir(...parts)` | 模块数据路径，如 `state.json` 或多段相对路径 | 仅写模块自己的目录；路径安全不能由调用名称证明 |
+| `api.dataDir(...parts)` | 模块数据路径，位于宿主公共 `modules-data` 根；可按双方约定的相对路径共享 | 不硬编码宿主安装路径；不可信输入、远程内容和模型输出不能未经校验直接作为路径 |
 | `api.dir` | 模块源码和资源位置 | 不作为可写用户数据目录 |
 | `api.workspaceDir(relative)` | 可选的 QQ 媒体工作区路径 | 按能力存在性处理并清理临时媒体 |
 | `api.log.debug/info/warn/error` | 字符串及多参日志 | 密钥、私聊和敏感响应不得直接输出；本仓不是 api.logger 用法 |
@@ -140,9 +140,7 @@ api.tool(() => api.settings().enabled ? [api.defineTool({
 | `api.think(prompt, opts)` | opts 见 title、timeoutMs；结果用于文本提取 | 不改写成 `api.llm.*` |
 | `api.dsh.get('web')` | 贴吧兜底 web.search({ query, maxResults: 8 }, signal)，读取 sources 的 url/title/snippet | 外部搜索插件可用性及完整返回需验证 |
 
-记忆规范为 fail-closed：私聊物理隔离，群聊不可读私聊，无 scope 老数据默认不可见。不得根据 memory 方法缺少 scope 参数就推断数据可跨会话读取。price-watch 的本地 TTL 管理也不代表通用记忆服务带同等 TTL 保证。
-
-存储差异：规范提及裸 `dataDir()` 静态拦截，但 ai-brief、meme-wiki、distill 有无参 `api.dataDir()`，distill 还有读取全局 chatlog 的路径依赖。这些需要结合目标宿主与实际授权澄清；本仓 check 不是全面存储安全检查器。
+兼容安全不变量：`api.dataDir(...parts)` 是模块数据路径 helper，不是单插件边界沙箱。固定宿主允许同一 `modules-data` 根内的约定路径共享；跨插件数据协作不能绕过聊天 memory scope。外部输入、URL、页面内容或模型输出转成路径前仍必须校验，不能把原样拼接误当权限控制。
 
 来源：[ai-brief](../modules/ai-brief/index.mjs)、[meme-wiki](../modules/meme-wiki/index.mjs)、[distill](../modules/distill/index.mjs)、[price-watch 记忆桥](../modules/price-watch/lib/memory-bridge.mjs)、[tophub 浏览](../modules/tophub/lib/browse.mjs)、[tieba-reader](../modules/tieba-reader/index.mjs)、[MODULE_SPEC](MODULE_SPEC.md)。
 
@@ -237,7 +235,7 @@ if (typeof service?.hot === 'function') {
 - settings 类型、配置更新和深合并、秘密登记、掩码、清空与留空语义。
 - 路由前缀、HTTP 方法、认证/同源限制、请求与响应封装。
 - 各发送入口的回执、重试、Outbox 覆盖，尤其是原始 OneBot 合并转发。
-- dataDir 沙箱、存量无参调用与 chatlog 读取边界，以及记忆 fail-closed 的实际保证。
+- `api.dataDir(...parts)` 返回宿主公共 `modules-data` 根下的路径，设计允许插件通过明确约定互通，不是单插件沙箱。请区分共享数据与聊天记忆的 `scope` 隔离；来自用户、远程页面或模型的路径仍须严格校验，并为共享格式定义 owner 与迁移方式。
 - api.lib/core/dsh 兼容范围与稳定能力；缺失能力的降级效果。
 
 宿主缺失时条件 skip 的测试不能作为以上验证通过的证据，示例见 [tieba-reader 宿主面板测试](../modules/tieba-reader/host-panel.test.mjs)。

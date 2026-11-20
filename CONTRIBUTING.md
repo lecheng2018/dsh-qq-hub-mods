@@ -2,7 +2,7 @@
 
 适用仓库：`lecheng2018/dsh-qq-hub-mods`。更新日期：2026-11-20；本轮在文档提交 `edc1b486` 基础上实施自动门禁。
 
-本文规定模块贡献和维护流程；SDK 契约以现有 [MODULE_SPEC](docs/MODULE_SPEC.md) 为起点，实际调用边界见 [接口参考](docs/API_REFERENCE.md)，检查命令及自动化限制见 [开发基准](docs/DEVELOPMENT_BASELINE.md)。新增或变更贡献必须满足 [硬性要求](docs/MANDATORY_REQUIREMENTS.md)。可自动化的门禁已由本轮脚本和工作流实现；需业务判断的规则仍由评审核验。严格宿主契约的已知阻断见 [HOST_CONTRACT](docs/HOST_CONTRACT.md)。
+本文规定模块贡献和维护流程；SDK 契约以现有 [MODULE_SPEC](docs/MODULE_SPEC.md) 为起点，实际调用边界见 [接口参考](docs/API_REFERENCE.md)，检查命令及自动化限制见 [开发基准](docs/DEVELOPMENT_BASELINE.md)。新增或变更贡献必须满足 [硬性要求](docs/MANDATORY_REQUIREMENTS.md)。可自动化的门禁已由本轮脚本和工作流实现；需业务判断的规则仍由评审核验。模块间共享应使用公开服务或双方明确约定的公共数据路径。
 
 ## 1. 仓库定位与开发边界
 
@@ -59,7 +59,7 @@ git status --short
 ### 数据、发送与面板
 
 - 消息通过已核验进入 Outbox 的宿主发送链路；SDK 中存在原始 OneBot/NapCat 调用不代表它自动满足台账要求。
-- 模块数据写入宿主分配的模块目录；会话数据按会话隔离。不得硬编码宿主安装目录或跨模块读写。
+- 确需模块间文件协作时，双方应约定 `modules-data` 下的相对路径、数据 owner、格式、并发和迁移方式；优先考虑 `api.use(id)` 的公开服务。跨插件共享可以是设计需要，但来自用户、远程内容或模型的路径必须校验。
 - 密钥使用 `password` 类配置字段，不写进日志、源码、fixture、截图或面板普通状态返回。
 - 面板遵循现有 `React / h / ui / call` 桥接约定，动作名称和方法与后端注册保持一致。面板隐藏按钮不等于后端鉴权。
 - 涉及用户可见效果、登录或浏览器能力的变更，补一项目标宿主中的手工验证记录。
@@ -79,7 +79,7 @@ node scripts/pack.mjs --out dist
 node scripts/benchmark.mjs --out .artifacts/benchmark.json
 ```
 
-PR 版本比较额外使用 `node scripts/check.mjs --base <base-sha>`。发布在干净工作区打包，并要求 `node scripts/host-contract.mjs --strict` 通过；固定宿主目前的 dataDir 越界测试会阻断发布，不能删除断言或关闭门禁。
+PR 版本比较额外使用 `node scripts/check.mjs --base <base-sha>`。发布在干净工作区打包，并要求固定宿主契约通过；共享数据路径按宿主实际约定验证。
 
 统一 runner 发现活跃模块、scripts 和模板中的测试；任一活跃模块没有匹配 `*.test.mjs` 时失败。归档 `_qq-enhance` 不作为当前市场模块参与，旧 `.test.js` 也不能靠改后缀就声称兼容宿主。
 
@@ -109,6 +109,6 @@ PR 版本比较额外使用 `node scripts/check.mjs --base <base-sha>`。发布�
 
 ## 8. 发布与撤回
 
-发布与 CI 复用同一质量工作流，发布额外要求严格宿主契约通过；发布器只消费同一提交的已验收 Linux 产物。tag 为 `<id>-v<version>`，新版本必须指向产物 commit；核实所有资产后才能写 registry。历史已索引资产只读核验，不用当前源码重新打包覆盖。旧 `push-registry.sh` 不再提供绕过发布验收的独立推送入口。中断恢复及两个历史 tag 偏差见 [开发基准](docs/DEVELOPMENT_BASELINE.md)。
+发布与 CI 复用同一质量工作流，发布器只消费同一提交的已验收 Linux 产物。tag 为 `<id>-v<version>`，新版本必须指向产物 commit；核实所有资产后才能写 registry。历史已索引资产只读核验，不用当前源码重新打包覆盖。共享数据契约由宿主版本和模块双方文档定义。旧 `push-registry.sh` 不再提供绕过发布验收的独立推送入口。
 
 安全问题用 `revoked.json` 按现有格式登记，并通过维护流程更新 registry；不能仅从源码删掉模块就认为旧版本已撤回。涉及密钥泄漏时先撤销或轮换密钥，PR 和日志里仅提供脱敏信息。
