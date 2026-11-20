@@ -1,14 +1,25 @@
 {
   "id": "heybox",
   "name": "刷小黑盒",
-  "version": "1.0.0",
-  "description": "小黑盒游戏社区：看信息流、读帖子热评、点赞、评论、发帖（可带图）、删自己的帖。",
+  "version": "1.6.3",
+  "description": "用主人的账号逛小黑盒：看帖子和热评，点赞、评论、发帖（网页兜底）。支持谷时逛、扫码登录和浏览器验证。浏览器走宿主共享实例。",
   "category": "platform",
-  "tags": ["heybox", "xiaoheihe", "community", "post"],
-  "author": "lecheng2018",
+  "tags": [
+    "小黑盒",
+    "游戏"
+  ],
+  "author": "accomplish07zrh-eng",
   "license": "MIT",
   "api": 1,
-  "minPluginVersion": "1.4.3",
+  "minPluginVersion": "1.2.0",
   "requires": [],
-  "capabilities": ["network", "storage", "schedule", "tools"]
+  "capabilities": [
+    "network",
+    "storage",
+    "schedule",
+    "tools",
+    "panel",
+    "browser"
+  ],
+  "homepage": "https://github.com/accomplish07zrh-eng/dsh-aurabot-qq"
 }
