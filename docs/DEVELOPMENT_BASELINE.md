@@ -1,211 +1,133 @@
 # 开发基准
 
-仓库：`lecheng2018/dsh-qq-hub-mods`。审阅日期：2026-11-20；固定快照：`3c2fadd2b0e2cd9743e4138f551530b763b99d6b`。
+更新日期：2026-11-20。本轮在文档提交 `edc1b486` 的基础上，把原先六项建议落实为脚本、测试、共享工作流和固定宿主契约。本文描述本轮实现；GitHub 实际运行结果以对应提交的 Actions 为准。
 
-本文记录已核对的代码现状、命令和交付契约，不是测试通过报告。测试数量为文件发现统计；未运行本仓测试、构建或发布，也没有覆盖率和性能实测数据。新增强制评审要求见 [硬性要求](MANDATORY_REQUIREMENTS.md)，开发操作见 [开发指南](../CONTRIBUTING.md)，SDK 见 [接口参考](API_REFERENCE.md)。
+## 环境与范围
 
-## 1. 环境基线
+- Node.js 22.x 当前补丁；本地验证使用 22.23.5。CI 的 Node 主版本为 22，同时覆盖 Ubuntu 与 Windows，不据此宣称其他主版本或平台已验证。
+- Git 完整历史与 tag；Git 查询异常导致检查失败。根目录没有 npm 安装步骤，运行时和工程脚本只使用 Node 内置模块。
+- 打包使用 `node:zlib.crc32`，部分测试需要 `node:sqlite`。不能假设所有早期 22.x 补丁均满足全部接口。
+- 14 个活跃模块，`_`、`.` 前缀一级目录为归档/排除区；当前活跃模块原有 26 个 `*.test.mjs`，新增脚本与模板测试由统一 runner 发现。
+- `.gitignore` 与打包过滤规则独立。构建与测试报告写入忽略目录 dist、artifacts 或 .artifacts，不能因为 Git 忽略就允许敏感文件进包。
 
-| 项目 | 当前基线 | 边界 |
+## 统一验证入口
+
+在仓库根执行，Bash/PowerShell 不依赖递归 glob：
+
+```sh
+node scripts/check.mjs
+node scripts/test.mjs
+node scripts/quality.mjs
+node scripts/host-contract.mjs
+node scripts/pack.mjs --out dist
+node scripts/benchmark.mjs --out .artifacts/benchmark.json
+```
+
+PR 版本比较：`node scripts/check.mjs --base <base-sha>`。发布使用干净工作区产物，额外要求 `node scripts/host-contract.mjs --strict` 通过。严格模式目前因固定宿主 dataDir 越界而失败；这是有效发布阻断，不得删用例、改空断言或关闭门禁。
+
+### 清单与版本
+
+共享校验库 `scripts/lib/validation.mjs` 提供严格字段类型、额外字段拒绝、完整 SemVer 和比较规则。编辑器使用 [模块 schema](../schemas/module.schema.json) 与 [撤回 schema](../schemas/revoked.schema.json)；语义规则还包括 id/目录一致、依赖引用、不可变发布及撤回重复项等。
+
+- major/minor/patch、预发布标识和 build metadata 按 SemVer 处理；`beta.2 → beta.3` 是升级，单改 build metadata 不是。
+- 已发布 tag 内容与整个模块目录比较，包括 README、测试和资源，不能通过只改非入包文件绕过纪律。
+- `--base` 的引用必须有效；检查 merge-base 和工作区变化，Git 执行失败不能当作无差异。
+- 已发布模块删除、跨 id 改名或移入归档会被阻断；未发布模块删除可处理。普通退市不等同安全撤回，不自动往 revoked 填充虚假安全理由。
+- 入口 id/version 与清单一致性在打包验收时核验；静态入口验证不是对任意 JavaScript 行为的安全证明。
+
+### 测试发现与网络
+
+`scripts/test.mjs` 发现活跃模块、scripts 和模板测试；活跃模块无测试或全局零发现会失败。归档 `_qq-enhance` 六个旧 `.test.js` 依赖旧宿主路径，不混入当前市场测试结果。固定宿主契约另走专用 runner，不依赖旧条件 skip。
+
+本轮修复 `tieba-reader/build.test.mjs` 在 Windows 使用文件路径动态 import 的问题，改为 file URL；遵守全目录版本纪律，将清单和入口同步升级为 **1.5.2**。修复后，在 Node 网络守卫下原有模块用例实测 **205 通过、0 失败、1 条件跳过**；跳过项为旧宿主面板测试，不是新契约的通过证据。
+
+测试进程通过 NODE_OPTIONS 加载 `scripts/network-guard.cjs`，限制常见 Node HTTP/HTTPS/TCP/TLS/fetch 外联，允许 localhost/127.0.0.1/::1 及本地 IPC；外部服务必须 mock。它不是 OS 沙箱，不防恶意代码绕过，不限制测试前 Git 拉取或发布的受控网络。
+
+### 质量与秘密检查
+
+`node scripts/quality.mjs` 执行：
+
+- Markdown 相对链接、代码围栏与编码替换字符检查。
+- 已跟踪及未忽略新文件的常见凭证模式扫描；报路径/行号/类型，不输出秘密值。
+- [最小模块模板](../templates/module/README.md) 的清单、入口、必需文件与 schema 验证。
+- schema 文档基础结构检查；回归测试核验 required 字段和 SemVer 正反例不漂移。
+
+GitHub secret scanning 与 push protection 在本轮读回时已启用。非提供商模式和有效性检查虽提交启用请求，读回仍为 disabled，不能宣称已启用。模式检查不能保证发现所有秘密，password 和业务脱敏仍需真实宿主验证与评审。
+
+## 打包与产物验收
+
+```sh
+node scripts/pack.mjs --out dist
+node scripts/pack.mjs --out dist --require-clean
+```
+
+打包始终遵守脚本自身过滤策略，不把 `.gitignore` 当白名单。禁止符号链接、敏感/临时文件、越界路径和不安全输出；测试与 fixture 不作为运行时交付。输出目录中的旧产物不能混入本次 release 元信息。
+
+`scripts/lib/artifact.mjs` 提供：
+
+- `validateArtifact(zipBuffer, record, { limits })`：失败 throw，成功返回 `{ files, unpackedBytes }`。
+- `validateReleaseDirectory(outDir, { limits })`：验收 release.json 及其全部包，返回记录数组，发布时拒绝 dirty 产物。
+
+验收核对 ZIP 结构、压缩方式、加密标记、路径、重复条目、CRC32、摘要、大小、文件数，以及根清单/入口一致性。包体上限 25 MiB、解包合计 64 MiB；文件数与更细的上限见 artifact 库常量，不以压缩文件大小代替解包预算。
+
+发布记录保留模块元数据及 tag/file/size/sha256/commit；本地脏工作区可测量，但须明确 dirty，不能作为可信发布来源。缺 Git commit 不再填空继续发布。SHA-256 是完整性摘要，CRC32 是格式校验；当前没有发布者签名或客户端验签，不能宣称具备。
+
+## 共享 CI 与发布流程
+
+CI 和 release 调用 `.github/workflows/quality.yml` 的同一验证链。Ubuntu 与 Windows 执行清单、统一测试、质量检查和宿主基线；Linux 产物经打包验收，记录性能报告。发布只下载自身 run、同一提交的已验证 Linux 产物，不接受任意跨 run 名称相同的附件。
+
+release 额外启用严格宿主契约，失败就不能进入远端发布。发布任务串行，默认权限只读，只有执行远端写入的任务获得 contents:write。旧 Bash registry 入口不允许独立绕过验收推索引。
+
+```sh
+node scripts/release.mjs --dist <产物目录> --revoked revoked.json --commit <40位提交>
+```
+
+此命令会写 GitHub Release/tag/registry，只在明确授权的发布环境执行。凭证使用受控环境变量，不写源码、产物或日志。
+
+发布器的关键规则：
+
+1. 本地验收成功且记录来源 commit 等于指定提交。
+2. 新 tag 必须绑定该 commit；已经存在但指向其他提交时拒绝。
+3. 区分远端 404 与网络/401/403 等错误，不能把查询失败当成不存在。
+4. 检查 Release 中的 ZIP 与单条元信息资产；缺失可以补齐，内容不同拒绝覆盖。
+5. 所有待发布/保留条目的远端资产核验完成后，再生成和推送 registry；并发引用变化采用受限重试，不能 force-push 丢掉其他提交。
+6. 重跑不重写可信历史文件；无实质索引变化不应只因生成时间制造无效提交。
+
+### 历史来源偏差
+
+当前已有两个 tag 与索引 commit 存在精确历史差异：
+
+| Tag | 历史索引 commit | 实际 tag commit |
 | --- | --- | --- |
-| Node.js | CI / release 均为 `node-version: 22`；开发使用当前补丁的 22.x | README 声明 ≥22，但 CI 未验证所有更高主版本；未锁定补丁 |
-| 操作系统 | CI 为 `ubuntu-latest` | 本地 Windows/macOS 不是现有 CI 矩阵 |
-| 依赖 | 只用 Node 内置模块；根目录无 `package.json`、engines 或统一 npm 安装步骤 | 零运行时依赖是仓库规则，不是全仓自动扫描结果 |
-| Git | 版本检查需要完整历史和 tag；workflow 的 checkout 配置 `fetch-depth: 0` | 缺少 Git 信息可能静默漏检 |
-| Shell | CI 用 Bash 递归 glob 发现测试；registry 脚本用 Bash | PowerShell 等价命令见 CONTRIBUTING |
-| 发布工具 | Git、GitHub CLI `gh`、适用的远端权限 | 本地检查不需要推送权限 |
+| meme-wiki-v0.2.7 | `bcb5b18b1d4e8f43a4f35859425fdda12a7530e6` | `3c2fadd2b0e2cd9743e4138f551530b763b99d6b` |
+| tophub-v0.3.1 | `bcb5b18b1d4e8f43a4f35859425fdda12a7530e6` | `3c2fadd2b0e2cd9743e4138f551530b763b99d6b` |
 
-`scripts/pack.mjs` 导入 `node:zlib` 的 `crc32`；部分测试使用 `node:sqlite` 和子进程实验开关。因此不能仅凭 README 的主版本说明，就假定任意早期 22.x 都能执行全部脚本。遵循当前 CI 同代补丁版本，并如实记录实际版本。
+只允许对这些精确历史组合按 registry 已钉住的摘要和元信息做只读核验；这不是新版本豁免。历史资产缺失、摘要不同或无法精确复原时失败，需要可信原产物或新版本，不能用当前源码重新打包覆盖旧资产。
 
-`.gitignore` 忽略 `node_modules/`、`dist/`、`.registry/`、`*.log`、`dbg.mjs`、`.mimosa/`。**Git 忽略规则不是打包过滤规则，也不是密钥防护。** 根目录 LICENSE 为 MIT，分发时保留适用许可及版权文字。
+## 固定宿主与发布阻断
 
-依据：`README.md`、`.github/workflows/ci.yml`、`.github/workflows/release.yml`、`.gitignore`、`LICENSE`、`scripts/pack.mjs`、`modules/meme-wiki/meme-wiki.test.mjs`。
+宿主版本固定在 `.github/host-contract.json`；本地可设 HOST_REPO_DIR，CI 默认克隆指定提交到临时目录。被测 Outbox、记忆、密码、生命周期和路径逻辑使用真实宿主实现，外部运输/服务才可替身。
 
-## 2. 模块与测试快照
+- 默认模式验证已支持行为，并明确报告 known gaps，不代表完整安全验收。
+- `--strict` 要求目录边界等全部安全契约成立；固定宿主当前 dataDir 直接拼接路径，`..` 可逃逸，因此严格模式应失败。
+- 记忆缺少 chat/scope 的 recall 为 fail-closed；主人管理 list 的全库语义不混同聊天读取。
 
-`modules/<id>/` 一个一级目录一个模块；`_` 或 `.` 开头的一级目录不进入 check/pack 的发布模块集合。当前 14 个可发布目录均有 `module.json` 且 `api: 1`；这不表示这些版本已经在远端发布。
+复现步骤、已验证行为和上游修复方向见 [HOST_CONTRACT](HOST_CONTRACT.md)。本轮不修改或推送宿主远端，也不静默升级固定版本来隐藏失败。
 
-| 模块 | 清单版本 | `*.test.mjs` 文件数 |
-| --- | --- | ---: |
-| ai-brief | 2.2.1 | 2 |
-| api-pool | 1.6.0 | 1 |
-| bili | 1.1.1 | 1 |
-| delivery-inbox | 1.0.1 | 1 |
-| distill | 1.0.0-beta.2 | 1 |
-| douyin | 2.0.0 | 1 |
-| group-topic-boundary | 1.0.0 | 1 |
-| heybox | 1.0.0 | 1 |
-| meme-wiki | 0.2.7 | 1 |
-| multi-parser | 1.0.2 | 1 |
-| price-watch | 1.1.0 | 4 |
-| qzone-social | 1.0.0 | 1 |
-| tieba-reader | 1.5.1 | 9 |
-| tophub | 0.3.1 | 1 |
-| **合计** | **14 个模块** | **26** |
-
-归档 `modules/_qq-enhance/tests/` 另有 6 个 `*.test.js`，不在上述测试发现结果内。原因是扩展名不匹配，不能解释为 CI 特意排除了 `_` 目录。归档测试还有指向缺失宿主源码的旧导入，不能仅改 glob 就声称可运行。
-
-## 3. 脚本接口
-
-### 3.1 清单与版本检查
+## 性能基线
 
 ```sh
-node scripts/check.mjs [--base <git引用>]
+node scripts/benchmark.mjs --dist dist --out .artifacts/benchmark.json --samples 5
 ```
 
-脚本以自身所在仓库定位输入，不写构建产物。正常成功退出 0，校验失败退出非零；无通用 `--help` 或完整 CLI 参数校验保证。
+报告包含 Node/平台/CPU/提交、清单检查进程耗时、ZIP/解包字节与文件数、包验收的预热和多次测量（min/median/p95/max），以及基准进程内存与 maxRSS。它不测外部 API，不等同所有模块运行时延迟、全 CI 峰值内存或生产吞吐。
 
-已实现检查：
+本轮 Windows x64 / Node 22.23.5 本地实测：14 个 ZIP 合计 264,081 字节，解包合计 662,445 字节；一次完整 check 进程约 6.93 秒。这是指定开发机的一次记录，不是跨平台性能保证；机器信息和逐包样本由 benchmark JSON 保存，CI 再独立测量。
 
-- `module.json` 能解析，id 等于目录名且匹配 `^[a-z][a-z0-9-]{1,39}$`。
-- `name`、`version`、`description`、`author`、`license` 为非空字符串；`api` 为数字 `1`。
-- `version` 以及有值的 `minPluginVersion` 只检查 `^\d+\.\d+\.\d+` 前缀，并非完整 SemVer 校验。
-- `requires` 引用可发布目录；必须有 `index.mjs` 或 `index.js`、README、LICENSE。
-- 非数组 `capabilities` 只产生警告。
-- 检查已有发布 tag 对应的目录差异；PR 可额外传 `--base` 检查升级。
-- 读取 `revoked.json`，逐项检查 id、reason 和非空 versions 数组的基本存在性。
+现阶段先保存可复现测量并在 CI 上传，不设置没有实测依据的延迟/覆盖率阈值；现有 25/64 MiB 限制属于交付安全预算，仍自动执行。积累代表性负载后，再单独审定性能回归预算。
 
-**不保证**入口可导入、导出定义合法、入口版本与清单一致、完整字段类型、依赖环、许可正文、运行时依赖或秘密扫描。撤回清单也没有完整顶层/条目 schema 与模块版本存在性校验。
+## 维护责任与剩余工作
 
-依据：`scripts/check.mjs`，特别是清单循环、版本比较和 revoked 检查。
+CODEOWNERS 指向仓库维护者，Actions 依赖由 Dependabot 每周检查。本轮已通过 GitHub API 配置并读回 main 保护：必需 `Quality Gate` 且分支保持最新，要求 PR、解决讨论，禁止强推与删除。仓库目前只有一名维护者，批准数为 0，未假设存在可提供非作者批准的第二人；管理员强制检查未启用以保留引导/紧急维护能力，该边界必须透明。另已启用仓库 ruleset：`*-v*` 发布 tag 禁止更新和删除，registry 分支禁止非快进更新和删除；新 tag 创建和正常索引更新仍允许。私密漏洞报告已启用。发布安全阻断属于有意保护，不能用管理员绕过当作修复。
 
-### 3.2 打包
-
-```sh
-node scripts/pack.mjs [--out dist] [--only a,b] [--missing]
-```
-
-| 参数 | 当前行为 |
-| --- | --- |
-| `--out` | 默认仓库根 `dist/`；按仓库根拼接输出路径 |
-| `--only` | 一级模块目录名的逗号分隔列表；不自动去空白，未知目录可得到空结果 |
-| `--missing` | 当前 `<id>-v<version>` 本地 tag 已存在时跳过，不查询远端资产是否齐全 |
-
-递归过滤点前缀项、`node_modules`、`test/`、`fixtures/` 目录及 `*.test.mjs` 文件；不普遍排除 `tests/`、`*.test.js`，也不读取 `.gitignore`。例如 `meme-wiki/run.mjs` 会入包，`tieba-reader/fixtures/` 不入包。
-
-输出 `<id>.zip`，包根是模块内容；使用 UTF-8 相对条目、deflate 和 CRC32，不加密。另始终写 `release.json` 数组，没有包时为 `[]`。每项在原清单基础上增加或覆盖：
-
-| 字段 | 含义 |
-| --- | --- |
-| `tag` | `<id>-v<version>` |
-| `file` | `<id>.zip` |
-| `size` | ZIP 字节数 |
-| `sha256` | ZIP 内容的小写十六进制 SHA-256 |
-| `commit` | `git rev-parse HEAD`；失败时为空字符串 |
-
-pack **不先运行 check 或测试，不清空输出目录**，读取的是工作区文件；有未提交改动时，包内容不一定与记录的 HEAD 一致。成功退出 0，文件等异常产生非零退出。
-
-依据：`scripts/pack.mjs`。
-
-### 3.3 生成市场索引
-
-```sh
-node scripts/publish-index.mjs [--release <file>] [--previous <file>] [--out <file>]
-```
-
-默认读仓库 `dist/release.json`，写仓库 `index.json`；显式相对路径按进程当前目录解释。未传 `--previous` 时从空模块表开始；传入时本次 release 按 id 覆盖旧条目，保留未在本次打包的旧模块。源码删除或进入撤回清单不会自行从 modules 中删除历史条目。
-
-索引结构：
-
-```json
-{
-  "schema": 1,
-  "generatedAt": "<ISO 时间>",
-  "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
-  "modules": [],
-  "revoked": []
-}
-```
-
-`modules` 按 id 排序。新条目包含 `id/name/version/description/category/tags/author/license/api/minPluginVersion/requires/capabilities/replacesBuiltin/path/sha256/size/commit`；`path` 为 `<tag>/<file>`。说明、分类、作者、许可、宿主最低版本、commit 的缺省值为 `""`；tags、requires、capabilities 缺省为 `[]`；replacesBuiltin 缺省为 `false`。
-
-生成器读取当前 `revoked.json` 覆写顶层 revoked；不下载、不上传、不签名，不验证实际 Release 资产或完整输入 schema。文件/JSON/写入失败通常退出非零。
-
-撤回清单的当前空值为 `{"revoked":[]}`；条目使用 `id`、`versions` 数组、`reason`。新增条目前应对照现有脚本及目标客户端验证版本匹配语义，不能假定支持通配符。
-
-依据：`scripts/publish-index.mjs`、`revoked.json`、`scripts/check.mjs`。
-
-### 3.4 推送 registry
-
-```sh
-bash scripts/push-registry.sh [release.json]
-```
-
-切到仓库根，默认使用 `dist/release.json`；fetch `origin/registry`，建立 `.registry` worktree，以上次索引合并生成新索引，提交并推送 `origin registry`。没有暂存差异时跳过；生成器每次更新 generatedAt，通常会形成新差异。
-
-该命令**写本地 Git 状态并访问、修改远端，无 dry-run**。现有 worktree、fetch 失败和中途失败需要人工诊断；脚本不自动清理 worktree、不自动重试。正常开发验证不运行此命令。
-
-依据：`scripts/push-registry.sh`。
-
-## 4. 当前 CI 和版本纪律
-
-`.github/workflows/ci.yml` 在 PR 和 `main` push 运行，权限为读取。步骤为：
-
-1. `check.mjs`；PR 传入 base SHA。
-2. Bash 发现并运行模块测试。
-3. `pack.mjs --out dist`。
-
-实际测试命令：
-
-```bash
-shopt -s globstar nullglob
-files=(modules/**/*.test.mjs)
-if [ ${#files[@]} -gt 0 ]; then
-  node --test "${files[@]}"
-else
-  echo "没有测试文件"
-fi
-```
-
-没有匹配文件时当前任务不会据此失败，也不强制每个模块都带测试。根目录和 scripts 的测试不在该 glob 内；它没有额外按 `_`、`test/`、`tests/`、`fixtures/` 或 `node_modules/` 排除。CI 不生成或验证市场索引、不解包验收、不测覆盖率。GitHub 的实际分支保护设置不在源码快照内，未核实。
-
-版本校验的精确边界：
-
-- 只处理仍存在、未归档且清单通过的目录。
-- 若当前版本 tag 存在，比较 `git diff --name-only <tag> HEAD -- modules/<id>`；目录内文档、测试和资源变化同样算差异。
-- 若当前 tag 不存在且提供 base，检查 `base...HEAD`，从 base 清单读取旧版本；旧版存在时要求 major/minor/patch 的数值严格增长。
-- 已有 tag 的分支不会再次做 base 升级比较；仅改变预发布后缀不算数字升级。
-- 非 PR 的普通检查没有 base 增量门禁；删除目录、改为归档、目录外变更、未提交变化不靠这两个 diff 覆盖。
-- Git 不可用、无效 base、缺少 tag 或执行失败可能被当作空结果，不能以成功退出证明完整版本纪律。
-
-这些是当前脚本行为，不是允许规避升版的规则。贡献者仍需遵守已发布内容不可变原则。
-
-## 5. 当前发布流程
-
-`.github/workflows/release.yml` 仅在 `main` push 且路径命中 `modules/**` 或 `revoked.json` 时触发；归档和测试变动也可能触发。根文档和工作流自身变化不是该路径触发条件。
-
-1. build job 运行 check、`pack --out dist --missing`，上传 dist。
-2. publish job 取得 `contents: write` 权限，下载产物。
-3. 通过 `gh release view/create` 为每项创建 `<id>-v<version>` Release；已查询到的 Release 跳过。
-4. 资产为 `<id>.zip` 和 `<id>-release.json`，后者是单条元信息对象。
-5. 推送 registry 分支。撤回不会自动删除旧 Release。
-
-现有 workflow 没有直接依赖独立 CI 的测试成功，未配置发布并发约束，没有显式将新 tag 通过 `--target` 绑定到出包 commit，也没有将 SemVer 预发布自动设为 GitHub Pre-release。下载构建产物后不重算 ZIP 摘要或核对远端已有资产；`gh release view` 的失败未区分不存在与权限/网络错误。
-
-SHA-256 是内容摘要、CRC32 是 ZIP 校验；两者都不是发布者签名。当前没有代码签名或 provenance/验签流程；`GH_TOKEN` 是远端操作凭据，不是模块签名。
-
-## 6. 测试范围与副作用
-
-静态确认 14/14 可发布模块包含匹配测试，总计 26 个文件；这不是用例执行数、成功数或覆盖率。
-
-- `tieba-reader/host-panel.test.mjs` 在缺少宿主 `client/client.js` 时条件跳过。本仓快照不含该宿主文件。
-- `meme-wiki/meme-wiki.test.mjs` 会启动 SQLite 子进程并执行 `run.mjs`；不能把驱动脚本算第 27 个发现入口。
-- `tieba-reader/build.test.mjs` 的入口和裸包 import 检查只针对该模块，不能推广为全仓检查。
-- 外部 HTTP 按 README 规则应 mock；测试中的回环 HTTP/TCP、Node 子进程、临时目录和 SQLite 写删仍是真实副作用。
-- CI 没有限制所有出站网络；静态审查未见测试入口直接调用生产外部 API，但没有执行测试，也未证明所有被导入模块均无外网或其他副作用。
-
-check/pack 的 Git 操作查询本地信息；索引生成器读写本地文件；push-registry 和 release 明确写远端。pack 和索引生成会覆盖目标产物，不能把它们描述为纯只读校验。
-
-## 7. 未自动化要求与后续工程
-
-| 项目 | 当前缺口 | 后续可验收结果 |
-| --- | --- | --- |
-| 清单和版本 | schema、SemVer 和 Git 失败处理不完整 | 完整类型校验，Git 异常 fail-closed，删除/改名/预发布边界用例 |
-| 宿主契约 | 本仓无完整宿主实现 | 固定宿主版本的工具、面板、Outbox、隔离、password、存储联调 |
-| 产物 | 没有统一解包大小和内容验收 | 对照 MODULE_SPEC 的 ZIP 25 MB / 解包 64 MB 限制，检查路径、链接、数量、摘要和入口一致性 |
-| 测试 | 零发现成功，条件 skip；归档测试不可直接运行 | 明确零发现策略、受控 skip、归档处理；适用时增加真实宿主 CI |
-| 发布一致性 | 独立 CI 与 release 未直接串联，tag/资产存在性检查有限 | 发布同提交的已验证产物，tag 绑定来源，远端摘要核对，并发和重试策略 |
-| 安全检查 | 没有专门秘密扫描和测试网络隔离 | 适用 secret scan、路径/权限测试、允许回环的出站限制 |
-| 性能 | 无可复现的统一基准、覆盖率阈值或 SLO | 先记录环境、代表性操作、耗时、峰值资源、ZIP/解包大小，再制定预算 |
-
-上述属于后续实施项。本次新增文档不改变 CI、workflow、分支保护或宿主能力；不得将建议写成已完成的安全或性能保证。
+仍需上游修复 dataDir 目录边界并更新固定契约版本；完整进程隔离、所有业务输入鉴权、生产浏览器/媒体效果和覆盖率目标不是本轮可由脚本自动证明的内容。任何报告必须区分普通测试成功、条件跳过和严格宿主失败。

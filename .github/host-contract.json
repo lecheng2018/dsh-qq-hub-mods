@@ -1,0 +1,13 @@
+{
+  "owner": "lecheng2018",
+  "repo": "dsh-qq-hub",
+  "sha": "ee0c7f46c0ff5456fe73193d96c4f84de74472ac",
+  "knownGaps": [
+    {
+      "id": "SEC-03",
+      "title": "api.dataDir does not contain or validate child paths",
+      "evidence": "src/core/modules.js makeApi.dataDir constructs the module root and returns join(root, ...parts); parent segments can resolve outside that root, including another module's data directory.",
+      "strictAssertion": "Every tested api.dataDir result remains within that module's root."
+    }
+  ]
+}

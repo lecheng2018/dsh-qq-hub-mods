@@ -5,22 +5,36 @@ on:
     branches: [main]
 permissions:
   contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  check:
+  validate-ubuntu:
+    name: Quality / Validate (Ubuntu)
+    uses: ./.github/workflows/quality.yml
+    with:
+      runner: ubuntu-latest
+      strict-host: false
+      upload-release-artifact: false
+      base-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+  validate-windows:
+    name: Quality / Validate (Windows)
+    uses: ./.github/workflows/quality.yml
+    with:
+      runner: windows-latest
+      strict-host: false
+      upload-release-artifact: false
+      base-ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+  quality-gate:
+    name: Quality Gate
+    if: always()
+    needs: [validate-ubuntu, validate-windows]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: 清单校验（PR 要求改动模块升版本）
-        run: node scripts/check.mjs ${{ github.event_name == 'pull_request' && format('--base {0}', github.event.pull_request.base.sha) || '' }}
-      - name: 模块测试（外部 HTTP 一律 mock）
+      - name: Require both platform validations
+        env:
+          UBUNTU_RESULT: ${{ needs.validate-ubuntu.result }}
+          WINDOWS_RESULT: ${{ needs.validate-windows.result }}
         run: |
-          shopt -s globstar nullglob
-          files=(modules/**/*.test.mjs)
-          if [ ${#files[@]} -gt 0 ]; then node --test "${files[@]}"; else echo "没有测试文件"; fi
-      - name: 打包冒烟
-        run: node scripts/pack.mjs --out dist
+          test "$UBUNTU_RESULT" = success
+          test "$WINDOWS_RESULT" = success

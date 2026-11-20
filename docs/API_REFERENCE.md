@@ -2,7 +2,7 @@
 
 审阅日期：2026-11-20；市场仓库快照：`3c2fadd2b0e2cd9743e4138f551530b763b99d6b`。
 
-本文区分三类证据：**规范**为 [MODULE_SPEC](MODULE_SPEC.md) 的约定；**用法**为本仓代码依赖的调用或模块自身返回；**待验证**为必须对照目标宿主确认的行为。本仓不包含完整宿主 SDK 实现；MODULE_SPEC 指向主仓 `src/modules/API.md`，本文未据此宣称已审阅主仓。模块用法、测试替身和第三方 HTTP 服务不能当作完整公共 API 保证。
+本文区分三类证据：**规范**为 [MODULE_SPEC](MODULE_SPEC.md) 的约定；**用法**为本仓代码依赖的调用或模块自身返回；**待验证**为必须对照目标宿主确认的行为。2026-11-20 新增固定宿主真实实现测试，具体已验证行为与 dataDir 缺口见 [HOST_CONTRACT](HOST_CONTRACT.md)；本表仍不是宿主完整公共 API。模块用法、测试替身和第三方 HTTP 服务不能代替契约保证。
 
 发布 CLI、市场索引和撤回清单的数据契约另见 [开发基准](DEVELOPMENT_BASELINE.md)。接口改动与安全门禁见 [硬性要求](MANDATORY_REQUIREMENTS.md)。
 

@@ -17,9 +17,13 @@
 | --- | --- | --- |
 | 清单及版本检查 | `node scripts/check.mjs`；PR 版本检查补 `--base <base-sha>` | |
 | 相关模块及回归测试 | | |
-| 适用的全量测试 | 参考 CONTRIBUTING.md | |
-| 打包与产物核对 | `node scripts/pack.mjs --out dist` | |
-| 宿主 / 面板 / 浏览器集成（适用时） | | |
+| 全量模块 / 脚本 / 模板测试 | `node scripts/test.mjs` | |
+| 文档 / 秘密 / schema | `node scripts/quality.mjs` | |
+| 打包与产物核对 | `node scripts/pack.mjs --out dist`；发布加 `--require-clean` | |
+| 固定宿主基线 | `node scripts/host-contract.mjs` | |
+| 严格宿主发布契约 | `node scripts/host-contract.mjs --strict`；已知 dataDir 缺口不得绕过 | |
+| 性能测量 | `node scripts/benchmark.mjs` | |
+| 面板 / 浏览器集成（适用时） | | |
 
 ## 安全与数据影响
 

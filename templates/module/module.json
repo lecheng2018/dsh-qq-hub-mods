@@ -1,0 +1,14 @@
+{
+  "$schema": "../../schemas/module.schema.json",
+  "id": "example-module",
+  "name": "示例模块",
+  "version": "1.0.0",
+  "description": "复制模板后替换 id、名称、描述和作者",
+  "author": "YOUR_GITHUB_LOGIN",
+  "license": "MIT",
+  "api": 1,
+  "category": "tool",
+  "tags": [],
+  "requires": [],
+  "capabilities": []
+}

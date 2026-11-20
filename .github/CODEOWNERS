@@ -1,0 +1,7 @@
+# Sensitive paths require maintainer review under the main branch rules.
+* @lecheng2018
+/scripts/ @lecheng2018
+/.github/ @lecheng2018
+/schemas/ @lecheng2018
+/tests/contract/ @lecheng2018
+/revoked.json @lecheng2018
