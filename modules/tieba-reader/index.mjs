@@ -2,10 +2,11 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { createTieba, barNames, clean, cleanTitle } from './tieba.mjs';
 import { createBrowserReader } from './browser-client.mjs';
+import { createSharedBrowserReader } from './shared-browser.mjs';
 
 export default {
-  id: 'tieba-reader', name: '逛贴吧（只读）', version: '1.5.2', api: 1,
-  description: '支持登录 Cookie、搜帖看帖、配置贴吧定时浏览，有兴趣时给主人分享；不发帖、不回帖。',
+  id: 'tieba-reader', name: '逛贴吧（只读）', version: '1.6.1', api: 1, // 与 module.json 同步（MOD-02）
+  description: '支持登录 Cookie、搜帖看帖、配置贴吧定时浏览并分享；定时浏览请先在面板填写关注的吧名；不发帖不回帖。新版与其它网页模块共用宿主共享浏览器。',
   panel: 'panel.js',
   defaults: { enabled: true, cookie: '', bars: '', interests: '', autoBrowse: false, intervalMinutes: 30, maxSharesPerDay: 3, startHour: 9, endHour: 23 },
   settings: [],
@@ -27,7 +28,15 @@ export default {
     api.onDispose?.(() => { disposed = true; controller.abort(); });
     const save = () => { if (disposed) return; mkdirSync(dirname(file), { recursive: true }); const tmp = file + '.tmp'; writeFileSync(tmp, JSON.stringify(state, null, 2)); renameSync(tmp, file); };
     if (titlesBefore !== JSON.stringify({ history: state.history, lastResult: state.lastResult })) save();
-    const browser = dependencies.renderPage || createBrowserReader(api, () => api.settings().cookie);
+    // 浏览器走哪条路：
+    //   1) 调用方注入（测试）
+    //   2) 宿主 ≥ 共享浏览器版（api.browser()）→ 共享层，和抖音共用一个 Chrome，省 200+ MB Electron
+    //   3) 老宿主 → 原来的 Electron 独立实现（install:browser 之前就这么跑）
+    const sharedSvc = (typeof api.browser === 'function') ? api.browser() : null;
+    const browser = dependencies.renderPage
+      || (sharedSvc ? createSharedBrowserReader({ service: sharedSvc, getCookie: () => api.settings().cookie, log: api.log })
+                    : createBrowserReader(api, () => api.settings().cookie));
+    if (sharedSvc) api.onDispose?.(() => browser.dispose?.());
     const tieba = createTieba({ getCookie: () => api.settings().cookie,
       renderPage: browser, browserAvailable: () => browser.available?.() !== false, signal: controller.signal,
       searchWeb: async (query) => {
@@ -176,6 +185,6 @@ export default {
       const result = await tieba[method](...args);
       return api.settings().enabled === false || disposed ? blocked('贴吧功能已关闭') : result;
     };
-    return { version: '1.5.1', tick, run, search: enabledRead('search'), browse: bar => String(bar || '').trim() ? enabledRead('browse')(bar) : enabledRead('home')(), read: enabledRead('read'), browserStatus: () => browser.status?.() || {}, state: () => ({ ...state }) };
+    return { version: '1.6.1', tick, run, search: enabledRead('search'), browse: bar => String(bar || '').trim() ? enabledRead('browse')(bar) : enabledRead('home')(), read: enabledRead('read'), browserStatus: () => browser.status?.() || {}, state: () => ({ ...state }) };
   },
 };
