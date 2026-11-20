@@ -2,59 +2,65 @@ name: Release
 on:
   push:
     branches: [main]
-    paths: ['modules/**', 'revoked.json']
+    paths:
+      - 'modules/**'
+      - 'revoked.json'
+      - 'scripts/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/quality.yml'
+      - '.github/workflows/release.yml'
+      - '.github/host-contract.json'
+      - 'schemas/**'
+      - 'templates/**'
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  validate-ubuntu:
+    name: Release Quality / Validate (Ubuntu)
     permissions:
       contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: node scripts/check.mjs
-      - name: 打包（只打还没发布过的版本）
-        run: node scripts/pack.mjs --out dist --missing
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
+    uses: ./.github/workflows/quality.yml
+    with:
+      runner: ubuntu-latest
+      strict-host: true
+      upload-release-artifact: true
+  validate-windows:
+    name: Release Quality / Validate (Windows)
+    permissions:
+      contents: read
+    uses: ./.github/workflows/quality.yml
+    with:
+      runner: windows-latest
+      strict-host: true
+      upload-release-artifact: false
   publish:
-    needs: build
+    name: Publish verified artifacts
+    needs: [validate-ubuntu, validate-windows]
+    if: ${{ needs.validate-ubuntu.result == 'success' && needs.validate-windows.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout the artifact's exact source commit
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/download-artifact@v4
+      - name: Download the Linux build from this workflow run
+        uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: release-dist-${{ github.sha }}
           path: dist/
-      - name: 每模块一个 Release（zip + release.json）
+      - name: Publish verified assets and update registry
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          node -e '
-            const fs = require("fs")
-            const release = JSON.parse(fs.readFileSync("dist/release.json", "utf8"))
-            for (const e of release) console.log([e.tag, e.id, e.name, e.version].join("\t"))
-          ' | while IFS=$'\t' read -r tag id name version; do
-            if gh release view "$tag" >/dev/null 2>&1; then echo "$tag 已存在，跳过"; continue; fi
-            node -e "const r=JSON.parse(require('fs').readFileSync('dist/release.json','utf8'));require('fs').writeFileSync('dist/$id-release.json',JSON.stringify(r.find(x=>x.id==='$id'),null,2))"
-            gh release create "$tag" "dist/$id.zip" "dist/$id-release.json" --title "$name v$version" --notes "sha256 见 release.json；安装请走插件面板「模块市场」。"
-          done
-      - name: 推 registry 索引
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          bash scripts/push-registry.sh dist/release.json
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/release.mjs --dist dist --commit "$GITHUB_SHA" --revoked revoked.json

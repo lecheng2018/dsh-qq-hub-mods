@@ -13,7 +13,7 @@ const dir = dirname(fileURLToPath(import.meta.url));
 test('入口在干净子进程里导入成功，id/version 与 manifest 一致，setup 是函数', () => {
   const manifest = JSON.parse(readFileSync(join(dir, 'module.json'), 'utf8'));
   const result = spawnSync(process.execPath, ['--input-type=module', '-e',
-    `const m = await import(${JSON.stringify(fileURLToPath(new URL('./index.mjs', import.meta.url)))});` +
+    `const m = await import(${JSON.stringify(new URL('./index.mjs', import.meta.url).href)});` +
     `const d = m.default; console.log(JSON.stringify({ id: d.id, version: d.version, setup: typeof d.setup }));`],
     { cwd: dir, encoding: 'utf8', windowsHide: true });
   assert.equal(result.status, 0, result.stderr);

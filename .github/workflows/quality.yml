@@ -1,0 +1,75 @@
+name: Shared Quality
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: GitHub-hosted runner label
+        required: true
+        type: string
+      strict-host:
+        description: Enforce host contract security assertions
+        required: false
+        default: false
+        type: boolean
+      upload-release-artifact:
+        description: Upload the verified Linux release build
+        required: false
+        default: false
+        type: boolean
+      base-ref:
+        description: Optional Git base ref for changed-module version checks
+        required: false
+        default: ''
+        type: string
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: ${{ inputs.runner == 'ubuntu-latest' && 'Quality / Validate (Ubuntu)' || 'Quality / Validate (Windows)' }}
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Checkout the exact workflow commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Validate manifests and changed-module versions
+        shell: bash
+        env:
+          BASE_REF: ${{ inputs.base-ref }}
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            node scripts/check.mjs --base "$BASE_REF"
+          else
+            node scripts/check.mjs
+          fi
+      - name: Run discovered tests with outbound networking guarded
+        run: node scripts/test.mjs
+      - name: Check documents, secrets, schemas, and template
+        run: node scripts/quality.mjs
+      - name: Verify pinned host contract
+        run: node scripts/host-contract.mjs ${{ inputs.strict-host && '--strict' || '' }}
+      - name: Build all active modules from this commit
+        run: node scripts/pack.mjs --out dist --require-clean
+      - name: Record artifact benchmark without thresholds
+        run: node scripts/benchmark.mjs --dist dist --out artifacts/benchmark.json
+      - name: Upload release artifact
+        if: inputs.upload-release-artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-dist-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload benchmark report
+        if: always() && hashFiles('artifacts/benchmark.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-${{ inputs.runner }}-${{ github.sha }}
+          path: artifacts/benchmark.json
+          if-no-files-found: error
+          retention-days: 14

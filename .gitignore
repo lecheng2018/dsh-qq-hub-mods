@@ -4,3 +4,6 @@ dist/
 *.log
 dbg.mjs
 .mimosa/
+.artifacts/
+artifacts/
+.cache/

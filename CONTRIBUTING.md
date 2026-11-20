@@ -1,8 +1,8 @@
 # 开发指南
 
-适用仓库：`lecheng2018/dsh-qq-hub-mods`。代码核对日期：2026-11-20；依据提交：`3c2fadd2b0e2cd9743e4138f551530b763b99d6b`。
+适用仓库：`lecheng2018/dsh-qq-hub-mods`。更新日期：2026-11-20；本轮在文档提交 `edc1b486` 基础上实施自动门禁。
 
-本文规定模块贡献和维护流程；SDK 契约以现有 [MODULE_SPEC](docs/MODULE_SPEC.md) 为起点，实际调用边界见 [接口参考](docs/API_REFERENCE.md)，检查命令及自动化限制见 [开发基准](docs/DEVELOPMENT_BASELINE.md)。新增或变更贡献必须满足 [硬性要求](docs/MANDATORY_REQUIREMENTS.md)。这些文件是本次提出的仓库治理规则；新增要求需要维护者合并采纳，不能据此声称远端已经实施。
+本文规定模块贡献和维护流程；SDK 契约以现有 [MODULE_SPEC](docs/MODULE_SPEC.md) 为起点，实际调用边界见 [接口参考](docs/API_REFERENCE.md)，检查命令及自动化限制见 [开发基准](docs/DEVELOPMENT_BASELINE.md)。新增或变更贡献必须满足 [硬性要求](docs/MANDATORY_REQUIREMENTS.md)。可自动化的门禁已由本轮脚本和工作流实现；需业务判断的规则仍由评审核验。严格宿主契约的已知阻断见 [HOST_CONTRACT](docs/HOST_CONTRACT.md)。
 
 ## 1. 仓库定位与开发边界
 
@@ -16,7 +16,7 @@
 
 ## 2. 环境准备
 
-使用最新补丁的 Node.js 22.x，与当前 CI 的主版本一致；Git 用于版本差异和发布 tag 校验。README 的支持说明为 Node ≥ 22，但本仓 CI 只配置 Node 22，不能声称所有更高主版本均已验证。
+使用最新补丁的 Node.js 22.x，与 CI 主版本一致；Git 用于版本、完整历史和 tag 校验。CI 同时运行 Ubuntu 与 Windows；其他 Node 主版本和操作系统不能据此宣称已验证。
 
 ```sh
 git clone https://github.com/lecheng2018/dsh-qq-hub-mods.git
@@ -40,6 +40,8 @@ git status --short
 ## 4. 新建或修改模块
 
 ### 清单与入口
+
+新模块从 [可执行模板](templates/module/README.md) 复制，保留 `*.test.mjs`；编辑器可关联 [module schema](schemas/module.schema.json)。运行 `node scripts/quality.mjs` 验证模板、文档和秘密模式。
 
 - 目录名、清单 id、入口导出 id 必须一致；版本字段保持一致。
 - 按现有 MODULE_SPEC 声明 `api`、分类、能力、说明、许可和宿主兼容范围；字段校验与可选项见开发基准，不凭空增加 `entry` 等未核对字段。
@@ -66,42 +68,22 @@ git status --short
 
 ## 5. 本地验证
 
-以下为仓库根执行命令。PowerShell 可使用第一个单模块命令；跨模块测试展开使用与 CI 一致的 Bash，或使用后面的 PowerShell 等价命令。
+以下命令在仓库根执行，Bash 与 PowerShell 使用同一测试 runner，无需依赖 shell 的递归 glob：
 
 ```sh
-# 1. 清单和已有发布版本检查
 node scripts/check.mjs
-
-# 2. 目标模块测试；将 <id> 替换成实际目录名
-node --test modules/<id>/*.test.mjs
-
-# 3. 构建全部可发布模块，核对产物；这一步不会替代 check 或测试
+node scripts/test.mjs
+node scripts/quality.mjs
+node scripts/host-contract.mjs
 node scripts/pack.mjs --out dist
+node scripts/benchmark.mjs --out .artifacts/benchmark.json
 ```
 
-与 CI 一致的 Bash 全量测试发现方式：
+PR 版本比较额外使用 `node scripts/check.mjs --base <base-sha>`。发布在干净工作区打包，并要求 `node scripts/host-contract.mjs --strict` 通过；固定宿主目前的 dataDir 越界测试会阻断发布，不能删除断言或关闭门禁。
 
-```bash
-shopt -s globstar nullglob
-files=(modules/**/*.test.mjs)
-if [ ${#files[@]} -gt 0 ]; then
-  node --test "${files[@]}"
-else
-  echo "没有测试文件"
-fi
-```
+统一 runner 发现活跃模块、scripts 和模板中的测试；任一活跃模块没有匹配 `*.test.mjs` 时失败。归档 `_qq-enhance` 不作为当前市场模块参与，旧 `.test.js` 也不能靠改后缀就声称兼容宿主。
 
-PowerShell 全量测试等价命令：
-
-```powershell
-$testFiles = @(Get-ChildItem -LiteralPath modules -Recurse -File -Filter *.test.mjs |
-  ForEach-Object { $_.FullName })
-if ($testFiles.Count -eq 0) { throw '没有测试文件' }
-node --test @testFiles
-if ($LASTEXITCODE -ne 0) { throw '模块测试失败' }
-```
-
-注意：PowerShell 版本在没有发现测试时主动失败，比当前 CI 的分支更严格。当前 CI 发现规则不包含 `*.test.js`；有意维护归档区时应另行运行相关测试，不能把它们计入上述命令的结果。
+测试进程启用 Node 网络守卫，普通 HTTP/HTTPS/TCP/TLS/fetch 仅允许回环；第三方服务必须 mock。它不是操作系统沙箱，不能隔离恶意进程或阻止所有可能的网络绕行。宿主源码拉取在测试前完成，宿主契约单独运行并报告已知差异。
 
 测试至少覆盖改动的成功路径、无效输入和一项失败路径；涉及会话隔离、发送、网络、计时器或凭证时，加相应回归用例。外部 HTTP 必须 mock，时间和随机数应可控。因缺少宿主代码而 skip 的用例需注明，不能把“无失败”报告成“全部执行通过”。
 
@@ -110,7 +92,7 @@ if ($LASTEXITCODE -ne 0) { throw '模块测试失败' }
 - 可发布模块目录内任何交付文件变更都先检查其版本影响；不仅业务源码，README、测试、资源和 LICENSE 也可能进入版本不可变检查与打包。
 - 已发布 `<id>-v<version>` 对应的模块内容不可覆盖或移动 tag；需要修正时发布新版本。
 - 采用语义化版本表达兼容性意图：修复为 patch，向后兼容功能为 minor，不兼容变更为 major；同时满足当前检查脚本的实际版本比较规则。
-- 当前比较器和 Git 检查存在局限，尤其是预发布版本、未提交工作区、缺失 Git 信息和已删除模块。不要依靠检查脚本的漏检规避升级；具体见开发基准。
+- 检查器使用完整 SemVer 比较；Git 引用、tag 或 diff 异常会失败，不能用缺失 Git 信息规避升版。预发布升级、工作区变更、删除/改名见开发基准；已发布模块不得直接删掉或移入归档来绕过版本纪律。
 - 根文档或工作流变更不会自动要求给全部模块升版；不要为纯仓库文档更新批量改模块版本。
 
 ## 7. 提交与评审
@@ -127,6 +109,6 @@ if ($LASTEXITCODE -ne 0) { throw '模块测试失败' }
 
 ## 8. 发布与撤回
 
-当前发布链为合入 `main` 后 `check → pack → GitHub Release → registry`；发布标签为 `<id>-v<version>`。日常开发和验证只运行本地校验及打包，不运行 `push-registry.sh`、不手动覆盖已发布资产。发布 workflow、CLI 参数和产物契约见 [开发基准](docs/DEVELOPMENT_BASELINE.md)。
+发布与 CI 复用同一质量工作流，发布额外要求严格宿主契约通过；发布器只消费同一提交的已验收 Linux 产物。tag 为 `<id>-v<version>`，新版本必须指向产物 commit；核实所有资产后才能写 registry。历史已索引资产只读核验，不用当前源码重新打包覆盖。旧 `push-registry.sh` 不再提供绕过发布验收的独立推送入口。中断恢复及两个历史 tag 偏差见 [开发基准](docs/DEVELOPMENT_BASELINE.md)。
 
 安全问题用 `revoked.json` 按现有格式登记，并通过维护流程更新 registry；不能仅从源码删掉模块就认为旧版本已撤回。涉及密钥泄漏时先撤销或轮换密钥，PR 和日志里仅提供脱敏信息。

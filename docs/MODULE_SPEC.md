@@ -23,11 +23,13 @@ export default {
 必填：`id`（`^[a-z][a-z0-9-]{1,39}$`）、`name`、`version`（semver）、`description`、`author`、`license`、`api`（当前 1）、`path`/`sha256` 由 CI 生成。
 可选：`category`、`tags`、`minPluginVersion`、`requires`（依赖的其他模块 id）、`capabilities`（展示用声明）。
 
-## 宿主强制的安全约束（不是建议，是架构）
+## 安全硬约束与实际核验
+
+以下是模块必须遵守的约束，不能仅凭 SDK 方法名推定宿主已完整强制。固定宿主的真实契约测试和 dataDir 已知缺口见 [HOST_CONTRACT](HOST_CONTRACT.md)；严格发布模式不允许绕过该缺口。
 
 - **发送必经 Outbox**：`api.sendText` / hub 出站统一台账，模块不能直连 onebot 发消息
 - **记忆 fail-closed**：私聊物理隔离、群聊读不到私聊、无 scope 老数据默认不可见
-- **api.dataDir(...)** 沙箱：模块数据只写自己的目录；裸 `dataDir()`（不带 id 参数）会被静态检查拦截
+- **api.dataDir(...)**：模块数据只写自己的目录，不接受 `..` 或跨模块路径。固定宿主当前仅拼接路径，尚非目录沙箱，严格契约对此失败；禁止把无参或有参调用名称当作安全证明
 - **密钥**：settings 里 `type: 'password'`，自动登记掩码、不回显、留空不清空；密钥绝不进日志
 - **inject 只收纯字符串数组**；工具必须走 `api.tool(defineTool(...))` 工厂，裸对象会被拦截
 
@@ -45,4 +47,4 @@ export default {
 
 ## 测试
 
-`node --test`，放模块目录内；外部 HTTP 一律 mock，CI 不访问真实网络。
+使用 `node scripts/test.mjs`，每个活跃模块必须有可发现的 `*.test.mjs`。外部 HTTP 一律 mock；测试进程的 Node 网络守卫允许回环，阻止普通公网调用，不是操作系统网络沙箱。宿主源码下载、GitHub 发布与工具安装属于测试前后的受控网络操作。
