@@ -16,7 +16,11 @@ export default {
     const { hub, http } = api.core
     // 主人的抖音号只由「核对」写入（面板存配置时不能直接改 secUid）
     const setOwner = (owner) => api.setConfig((cur) => ({ ...cur, douyin: { ...cur.douyin, owner } }))
-    const dy = createDouyin({ getConfig: api.config, setOwner, hub, memory: api.lazy('memory'), log: api.log })
+    // 共享浏览器：新宿主给 api.browser()，老宿主没有就退回抖音自己起（createDouyin 里自动挑）
+    const dy = createDouyin({
+      getConfig: api.config, setOwner, hub, memory: api.lazy('memory'), log: api.log,
+      browser: api.browser?.() || null,
+    })
     api.every(60_000, () => dy.tick(), '刷抖音')
 
     api.tool(({ chat, sessionId }) => {
