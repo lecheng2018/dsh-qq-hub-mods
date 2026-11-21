@@ -122,13 +122,89 @@ test('an existing asset with different bytes is rejected and never overwritten',
   assert.deepEqual([...state.assets.keys()], [record.file])
 })
 
-test('a tag bound to a different commit is rejected before release mutation', async () => {
+test('a tag bound to a different commit is rejected before release mutation when the existing Release cannot prove provenance', async () => {
+  // 孤儿 tag 且 Release 里没有 release.json 资产：无法证明资产与 tag 自洽 → 拒绝恢复、拒绝变更。
   const { client, state } = createMock({ tagCommit: 'b'.repeat(40), releaseExists: true })
   await assert.rejects(
     publishRecords({ records: [record], expectedCommit: commit, client, artifactProvider }),
-    /expected artifact commit/,
+    /Recovery aborted for sample-mod-v1\.2\.3/,
   )
   assert.equal(state.creates, 0)
+  assert.deepEqual(state.uploads, [])
+})
+
+test('an orphan tag with self-consistent Release assets is recovered into the registry without re-uploading', async () => {
+  // PR17 真机事故复现：tag 已指向旧 commit、Release 双资产齐全，但 registry 没收录（发布中途崩溃）。
+  // 恢复 = 校验 metadata.commit === tagCommit、zip 字节与 metadata 吻合后，原样收录，不上传任何资产。
+  const oldCommit = 'b'.repeat(40)
+  const orphanZip = Buffer.from('orphan module ZIP bytes from the interrupted run')
+  const orphanDigest = createHash('sha256').update(orphanZip).digest('hex')
+  // metadata 必须描述孤儿产物本身（size/sha256 与 tag 侧的 ZIP 一致），这正是恢复校验的依据。
+  const orphan = { ...record, size: orphanZip.length, sha256: orphanDigest, commit: oldCommit }
+  const { client, state } = createMock({
+    tagCommit: oldCommit,
+    releaseExists: true,
+    assets: [[record.file, orphanZip], [assetName(record), metadataBytes(orphan)]],
+  })
+  state.release.tag_name = record.tag
+  const warnings = []
+  const result = await publishAndUpdateRegistry({
+    client,
+    records: [record],
+    expectedCommit: commit,
+    previousIndex: { modules: [] },
+    artifactProvider: () => assert.fail('recovered release must not re-upload current artifacts'),
+    generatedAt: () => '2026-11-20T00:00:00.000Z',
+    warn: warning => warnings.push(warning),
+  })
+  assert.equal(result.results[0].status, 'recovered')
+  assert.equal(result.results[0].assets, 'verified')
+  assert.equal(result.records[0].commit, oldCommit, 'registry 条目保留孤儿产物自己的 commit（真实 provenance）')
+  assert.deepEqual(state.uploads, [], '恢复绝不重传资产')
+  assert.equal(state.creates, 0, '恢复绝不重建 Release')
+  assert.equal(state.puts.length, 1, 'registry 需要收录恢复的版本')
+  assert.match(warnings[0], /interrupted publication/)
+  const indexed = JSON.parse(state.puts[0].content.toString('utf8')).modules[0]
+  assert.equal(indexed.version, record.version)
+  assert.equal(indexed.commit, oldCommit)
+})
+
+test('an orphan tag whose Release assets do not match its metadata is rejected, never recovered', async () => {
+  // tag 自洽但 zip 字节与 metadata 不符（被篡改/上传中断的半截资产）→ 必须拒绝恢复。
+  const oldCommit = 'b'.repeat(40)
+  const oldRecord = { ...record, commit: oldCommit }
+  const tamperedZip = Buffer.from('tampered bytes that do not match metadata digest')
+  const { client, state } = createMock({
+    tagCommit: oldCommit,
+    releaseExists: true,
+    assets: [[record.file, tamperedZip], [assetName(record), metadataBytes(oldRecord)]],
+  })
+  state.release.tag_name = record.tag
+  await assert.rejects(
+    publishRecords({ records: [record], expectedCommit: commit, client, previousIndex: { modules: [] }, artifactProvider }),
+    /does not match the expected size or SHA-256/,
+  )
+  assert.equal(state.puts.length, 0)
+  assert.deepEqual(state.uploads, [])
+})
+
+test('an orphan tag whose metadata commit disagrees with the git tag is rejected, never recovered', async () => {
+  // metadata 自称的 commit 与 git tag 实际指向不一致 → provenance 不自洽，拒绝恢复。
+  const tagCommit = 'b'.repeat(40)
+  const lyingMetadata = { ...record, commit: 'c'.repeat(40) }
+  const orphanZip = Buffer.from('some zip bytes')
+  const orphan = { ...record, size: orphanZip.length, sha256: createHash('sha256').update(orphanZip).digest('hex') }
+  const { client, state } = createMock({
+    tagCommit,
+    releaseExists: true,
+    assets: [[record.file, orphanZip], [assetName(record), metadataBytes(lyingMetadata)]],
+  })
+  state.release.tag_name = record.tag
+  await assert.rejects(
+    publishRecords({ records: [record], expectedCommit: commit, client, previousIndex: { modules: [] }, artifactProvider }),
+    /does not match the git tag/,
+  )
+  assert.equal(state.puts.length, 0)
   assert.deepEqual(state.uploads, [])
 })
 
