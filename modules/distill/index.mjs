@@ -106,7 +106,10 @@ export default {
     async function runDistillLines(groupId, lines) {
       try {
         const { system, text } = buildDistillPrompt(lines)
-        const out = await api.ask({ system, text, maxTokens: 1500, temperature: 0.3 })
+        // 1500 太紧：一次喂 15 条消息、要模型逐条吐 JSON，经常没写完就被截停（真机 2026-11-21：
+        // 当天 21 次「未解析出有效规则」，回包里其实已有完整对象）。放宽到 3000 只是减少截断，
+        // 真正兜底靠 verifier 的 salvageTruncatedObjects —— 两处都要有，不能只靠其中一边。
+        const out = await api.ask({ system, text, maxTokens: 3000, temperature: 0.3 })
         const rawRules = safeParseJsonArray(out)
 
         if (!rawRules || !rawRules.length) {
