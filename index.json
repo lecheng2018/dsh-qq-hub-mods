@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-20T17:27:41.321Z",
+  "generatedAt": "2026-11-21T01:38:00.310Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
     {
@@ -120,7 +120,7 @@
     {
       "id": "distill",
       "name": "群友蒸馏（测试版）",
-      "version": "1.0.0-beta.3",
+      "version": "1.0.0-beta.4",
       "description": "【测试版】移植 MaiBot 语感提炼机制，高信噪比提取群友接话习惯与口癖，设置频次门槛，绝不强行加戏。",
       "category": "persona",
       "tags": [
@@ -140,16 +140,16 @@
         "panel"
       ],
       "replacesBuiltin": false,
-      "path": "distill-v1.0.0-beta.3/distill.zip",
-      "sha256": "6cedd15251e80d57f330bdf2bce28cdb3d1419f2999af54350afc916e5ce6b1a",
-      "size": 22588,
-      "commit": "4de6ba068bfb58ab220b4ce8765c73f8513e075e"
+      "path": "distill-v1.0.0-beta.4/distill.zip",
+      "sha256": "97390083573bbae0a0e3c934329de6679200a8173c35f0964e084a1e6b84b552",
+      "size": 22829,
+      "commit": "ff704918e8ea0f7177ace19c5359b9d27637af69"
     },
     {
       "id": "douyin",
       "name": "刷抖音",
-      "version": "2.1.0",
-      "description": "用共享浏览器刷抖音（一个浏览器进程给所有网页类模块共用）：看推荐、点赞、评论、分享给主人；别人发来链接能点开看。",
+      "version": "2.2.0",
+      "description": "用共享浏览器刷抖音：看推荐、点赞评论、评论区接着聊（默认关）、分享给主人；别人发来链接能点开看。",
       "category": "platform",
       "tags": [
         "douyin",
@@ -170,10 +170,10 @@
         "tools"
       ],
       "replacesBuiltin": false,
-      "path": "douyin-v2.1.0/douyin.zip",
-      "sha256": "3c63b8fd4d2f30f179bd249a6c64dbbf2a34275a3d8e0e6368ddabbd9d913b07",
-      "size": 4782,
-      "commit": "0f9c71d97f8813c69a9982f61cffb8678bf17e02"
+      "path": "douyin-v2.2.0/douyin.zip",
+      "sha256": "279ee75e2663e77674b7a3ca133a4cac61d3c9cf0e33817a9db0e5ca5bb3fff2",
+      "size": 4846,
+      "commit": "15bff7501bdeb864c0945324797405b6cc62b911"
     },
     {
       "id": "group-topic-boundary",
@@ -201,31 +201,31 @@
     {
       "id": "heybox",
       "name": "刷小黑盒",
-      "version": "1.0.0",
-      "description": "小黑盒游戏社区：看信息流、读帖子热评、点赞、评论、发帖（可带图）、删自己的帖。",
+      "version": "1.6.3",
+      "description": "用主人的账号逛小黑盒：看帖子和热评，点赞、评论、发帖（网页兜底）。支持谷时逛、扫码登录和浏览器验证。浏览器走宿主共享实例。",
       "category": "platform",
       "tags": [
-        "heybox",
-        "xiaoheihe",
-        "community",
-        "post"
+        "小黑盒",
+        "游戏"
       ],
-      "author": "lecheng2018",
+      "author": "accomplish07zrh-eng",
       "license": "MIT",
       "api": 1,
-      "minPluginVersion": "1.4.3",
+      "minPluginVersion": "1.2.0",
       "requires": [],
       "capabilities": [
         "network",
         "storage",
         "schedule",
-        "tools"
+        "tools",
+        "panel",
+        "browser"
       ],
       "replacesBuiltin": false,
-      "path": "heybox-v1.0.0/heybox.zip",
-      "sha256": "74f078539b6651c77e16145b0c5e9d92b7acd543a4424b42f1e063e7a4bdd72b",
-      "size": 6370,
-      "commit": "abad190ea0770225bd12f1a63156d704d9bf0ced"
+      "path": "heybox-v1.6.3/heybox.zip",
+      "sha256": "9366f4a654eaa30eb7e34adb4b41604b2948255d8dc2f615cf37953aa8cb8b60",
+      "size": 97750,
+      "commit": "15bff7501bdeb864c0945324797405b6cc62b911"
     },
     {
       "id": "hongguo",
