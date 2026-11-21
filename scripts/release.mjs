@@ -424,6 +424,44 @@ async function createOrRecoverRelease(client, record, expectedCommit) {
   return release
 }
 
+/**
+ * 恢复「孤儿 tag」：git tag / Release 已存在但 registry 索引缺这个版本。
+ * 触发场景（真机 2026-11-21，PR17 发布中途 GitHub API 网络崩溃）：douyin-v2.2.0 /
+ * heybox-v1.6.3 的 tag 和 Release 资产都已落库，但 registry 的 index.json 还停在旧版本——
+ * 下一次发布走到这些模块时 createOrRecoverRelease 会因 tag 指向旧 commit 直接中止整批。
+ *
+ * 恢复条件（全部满足才允许收录，缺一即拒）：
+ *   1. 该版本不在 registry（matchingPrevious 找不到）——registry 里的历史版本走 historical 分支；
+ *   2. git tag 指向的 commit 与该 Release 自带 metadata 资产里的 commit 一致（tag 与产物自洽）；
+ *   3. Release 资产完整（zip + release.json 齐全）且 zip 尺寸/SHA-256 与 metadata 完全吻合。
+ * 恢复动作：不重传任何资产，只把 metadata（registry 记录的权威来源）收进 index —— 与
+ * historical 分支同一口径：verified assets are retained without overwrite。
+ */
+async function recoverOrphanRelease(client, tag) {
+  const release = await client.getReleaseByTag(tag)
+  if (!release) throw new Error(`Recovery aborted for ${tag}: git tag exists but no GitHub Release backs it`)
+  const tagCommit = await client.getTagCommit(tag)
+  if (!tagCommit) throw new Error(`Recovery aborted for ${tag}: GitHub Release exists but the git tag is missing`)
+  const assets = await client.listAssets(release.id)
+  if (!Array.isArray(assets)) throw new Error(`Recovery aborted for ${tag}: invalid asset list`)
+  const metadataAsset = assets.find(candidate => candidate.name.endsWith('-release.json'))
+  if (!metadataAsset) throw new Error(`Recovery aborted for ${tag}: Release has no release.json metadata asset`)
+  let metadata
+  try { metadata = JSON.parse((await client.downloadAsset(metadataAsset, DEFAULT_LIMITS.maxMetadataBytes)).toString('utf8')) } catch (error) {
+    throw new Error(`Recovery aborted for ${tag}: metadata asset is unreadable (${error.message})`)
+  }
+  if (metadata.tag !== tag || String(metadata.commit).toLowerCase() !== tagCommit.toLowerCase()) {
+    throw new Error(`Recovery aborted for ${tag}: metadata (tag=${metadata.tag}, commit=${String(metadata.commit).slice(0, 8)}) does not match the git tag (${tagCommit.slice(0, 8)})`)
+  }
+  const zipAsset = assets.find(candidate => candidate.name === metadata.file)
+  if (!zipAsset) throw new Error(`Recovery aborted for ${tag}: Release is missing the ZIP asset ${metadata.file}`)
+  const zipBytes = await client.downloadAsset(zipAsset, DEFAULT_LIMITS.maxAssetBytes)
+  const zipRecord = { ...metadata, size: Number.isInteger(zipAsset.size) && zipAsset.size > 0 ? zipAsset.size : metadata.size }
+  compareZip(zipBytes, zipRecord, metadata.file)
+  // 用 metadata 原文（含它的 commit）作为 registry 条目；current ZIP 字节已验证与之一致。
+  return { metadata, zipAssetPresent: true }
+}
+
 export async function publishRecords({ records, expectedCommit, client, previousIndex = { modules: [] }, artifactProvider, limits = DEFAULT_LIMITS, warn = message => console.warn(message) } = {}) {
   if (!client) throw new Error('publishRecords requires a REST client')
   validateRecords(records, expectedCommit)
@@ -443,6 +481,18 @@ export async function publishRecords({ records, expectedCommit, client, previous
       if (!assets.complete) throw new Error(`Historical release ${tag} is missing asset(s): ${assets.missing.join(', ')}; cannot reconstruct it from a tag`)
       indexedRecords.push(assets.metadata)
       results.push({ id: record.id, tag, status: 'historical', assets: 'verified' })
+      continue
+    }
+
+    // 孤儿 tag 恢复：registry 缺这个版本，但 git tag 已指向别的 commit。
+    // 只有当 tag 与 Release 资产自洽（metadata.commit === tagCommit、zip 字节吻合）时才收录并继续；
+    // 自洽性不足时如实抛错拒绝发布，绝不静默放行。
+    const orphanTagCommit = await client.getTagCommit(tag)
+    if (orphanTagCommit && orphanTagCommit.toLowerCase() !== expectedCommit.toLowerCase()) {
+      warn(`Warning: ${tag} exists at ${orphanTagCommit} but the registry has no entry for v${record.version} (interrupted publication); attempting recovery from the existing Release assets.`)
+      const recovered = await recoverOrphanRelease(client, tag)
+      indexedRecords.push(recovered.metadata)
+      results.push({ id: record.id, tag, status: 'recovered', assets: 'verified' })
       continue
     }
 
