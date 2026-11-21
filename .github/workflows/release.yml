@@ -56,7 +56,7 @@ jobs:
         with:
           node-version: 22
       - name: Download the Linux build from this workflow run
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-dist-${{ github.sha }}
           path: dist/
