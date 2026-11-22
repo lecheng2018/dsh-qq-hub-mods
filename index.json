@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-22T14:09:35.632Z",
+  "generatedAt": "2026-11-22T14:59:32.977Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
     {
@@ -65,14 +65,15 @@
     {
       "id": "bili",
       "name": "B站",
-      "version": "1.1.1",
-      "description": "看别人发的 B 站视频；定时自己刷、评论、回评论；抽帧看画面、发截图；按权限改自己的头像 / 签名。",
+      "version": "1.2.0",
+      "description": "看别人发的 B 站视频；定时自己刷、评论、回评论；抽帧看画面、发截图；按权限改自己的头像 / 签名；可单独选一个模型。",
       "category": "platform",
       "tags": [
         "bili",
         "bilibili",
         "video",
-        "comment"
+        "comment",
+        "model"
       ],
       "author": "lecheng2018",
       "license": "MIT",
@@ -86,10 +87,10 @@
         "tools"
       ],
       "replacesBuiltin": false,
-      "path": "bili-v1.1.1/bili.zip",
-      "sha256": "b5e5e6e6883dee16cafa265300b5e4a5f36c84d26dc20c411a039f3a8982ad2f",
-      "size": 4925,
-      "commit": "e3008c3e601b2593e2f0a3e4a98345514ca70dc3"
+      "path": "bili-v1.2.0/bili.zip",
+      "sha256": "7aaefb83be5d6020f7efc82c73d0912d1d809cc7a0885146c6f0e433a050e31f",
+      "size": 31123,
+      "commit": "80f83700f76bc860efc29ac3f3aa663561443a99"
     },
     {
       "id": "delivery-inbox",
