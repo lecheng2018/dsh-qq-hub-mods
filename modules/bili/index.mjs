@@ -1,19 +1,38 @@
 // B站（商店版）：别人发来链接时她能「看」视频（标题、简介、字幕、热评）；定时自己去刷、评论、回评论，
 // 看到好玩的分享给主人；抽帧看画面、发截图；按权限改自己的头像/签名。
-// 实现留在插件包内（bili/duty.js 等），本模块只做接线（壳上商店阶段）。
+//
+// 1.2.0 起实现整包搬进本模块（api.mjs / duty.mjs / vision.mjs / shots.mjs），插件本体不再有
+// src/bili；插件只提供通用能力，靠 api.lib 注入（数据目录、模型调用、ffmpeg 查找、SSRF 校验、
+// 出站身份闸、静默判定）。这样模块能单独迭代、单独测试，B 站自己选模型也只在这里改。
+//
+// 「B 站用的模型」：面板里选一个模型后——
+//   · 刷 B 站那几轮后台回合（挑关键词 / 决定评论·回复·分享）用 model 事件改成它；
+//   · 抽帧看画面的描述也用它（先问它能不能看图，不能就跳过看画面）；
+//   · 留空 = 全部跟随全局模型，行为和老版本一样。
 import { readFileSync } from 'node:fs'
+import { createBili } from './duty.mjs'
+import { lookWithVision, biliModelOf } from './vision.mjs'
 
 export default {
   id: 'bili',
   name: 'B站',
-  version: '1.1.1',
-  description: '看别人发的 B 站视频；定时自己刷、评论、回评论；抽帧看画面、发截图；按权限改自己的头像 / 签名（bili_watch / bili_comment / qq_send_shot / bili_set_avatar / bili_set_sign）',
+  version: '1.2.0',
+  description: '看别人发的 B 站视频；定时自己刷、评论、回评论；抽帧看画面、发截图；按权限改自己的头像 / 签名，可单独选模型（bili_watch / bili_comment / qq_send_shot / bili_set_avatar / bili_set_sign）',
   tab: 'bili',
   setup(api) {
-    const { createBili } = api.lib('bili/duty.js')
-    const { defineTool, str } = api.lib('tools/tools.js')
-    const { profileToolVisible, profilePermits } = api.lib('chat/access.js')
-    const { avatarSource } = api.lib('modules/profile/index.js')
+    // 插件内部能力一律按「可选」取：缺一个（老版本插件）就少一项功能，不要让整个模块加载失败。
+    const lib = (path) => {
+      try { return api.lib(path) || {} } catch (error) { return {} }
+    }
+    const store = lib('core/store.js')
+    const llm = lib('core/llm.js')
+    const img = lib('core/img.js')
+    const net = lib('core/net.js')
+    const reply = lib('chat/reply.js')
+    const identity = lib('chat/identity-guard.js')
+    const { defineTool, str } = lib('tools/tools.js')
+    const { profileToolVisible, profilePermits } = lib('chat/access.js')
+    const { avatarSource } = lib('modules/profile/index.js')
 
     const { hub, chatLog } = api.core
     const lastImage = new Map() // chatId → 最近一张图的网址（给 bili_set_avatar 的 last 用）
@@ -22,8 +41,46 @@ export default {
       if (url && /^https?:\/\//i.test(url)) lastImage.set(msg.chatId, url)
       return false
     })
-    const bili = createBili({ getConfig: api.config, hub, chatLog, memory: api.lazy('memory'), log: api.log, dsh: api.dsh })
+
+    // 看画面要用到的插件能力，一次性注入（不 import 插件路径，模块仓库里能跑测试）
+    const visionDeps = {
+      findFfmpeg: img.findFfmpeg,
+      assertPublicUrl: net.assertPublicUrl,
+      askModel: llm.askModel,
+      canSeeImages: llm.canSeeImages,
+      modelVision: llm.modelVision,
+    }
+
+    const bili = createBili({
+      getConfig: api.config,
+      hub,
+      chatLog,
+      memory: api.lazy('memory'),
+      log: api.log,
+      dsh: api.dsh,
+      store,
+      isSilence: reply.isSilence,
+      guardOutbound: identity.guardOutbound,
+      vision: (o) => lookWithVision({ ...o, deps: visionDeps }),
+      visionDeps,
+    })
     api.every(60_000, () => bili.tick(), '刷B站')
+
+    // 单独选的模型：只改「刷 B 站」那几个后台会话（system:bili），聊天和别的模块不受影响。
+    // 没选 / 插件太老没这个配置时返回 undefined，宿主就按原来的全局模型走。
+    api.on('model', (sel, chat) => {
+      if (!chat || chat.kind !== 'system') return undefined
+      const key = String(chat.chatId || '')
+      if (key !== 'system:bili' && !key.startsWith('system:bili:')) return undefined
+      const chosen = biliModelOf(api.config().bili || {})
+      if (!chosen) return undefined
+      return {
+        ...(sel || {}),
+        provider: chosen.provider,
+        model: chosen.model,
+        reasoningEffort: chosen.reasoningEffort || (sel && sel.reasoningEffort) || '',
+      }
+    })
 
     // 看视频谁发的链接都能看，评论要主人开口
     api.tool(({ chat, sessionId }) => {
