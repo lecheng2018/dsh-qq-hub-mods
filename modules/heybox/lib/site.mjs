@@ -16,11 +16,17 @@ import { createVerifier } from './verify.mjs'
 import { createBrowser } from './browser.mjs'
 import { postViaWeb, shouldFallbackToWeb } from './webpost.mjs'
 
-const { dataDir } = globalThis.aurabot.lib('core/store.js')
-
 const HOME = process.env.USERPROFILE || os.homedir()
 const CRED_DIR = path.join(HOME, '.heybox-ai')
 const CRED_FILE = path.join(CRED_DIR, 'credentials.json')
+
+const fallbackDataDir = (...p) => {
+  try {
+    const fn = globalThis.aurabot?.lib?.('core/store.js')?.dataDir
+    if (typeof fn === 'function') return fn(...p)
+  } catch {}
+  return path.join(HOME, '.dsh', 'plugins-data', 'dsh-qq-hub', 'modules-data', 'heybox', ...p)
+}
 
 const DEFAULT_STATE = {
   // 本机固定的设备指纹：首次运行时随机生成并落盘，不跟别人共用
@@ -163,7 +169,19 @@ export function linkIdOf(input) {
   return digits.length >= 6 ? digits : ''
 }
 
-export function createHeybox({ getConfig, setCookie, hub, memory, log, proactive, stateFile = path.join(HOME, '.dsh', 'heybox-state.json'), credFile = CRED_FILE, now = () => Date.now(), clientFactory = (options) => new HeyboxClient(options), verifier: injectedVerifier, imagegen = null, memeRoot = null, imageDir = null, tokenBrowser: injectedTokenBrowser = null } = {}) {
+export function createHeybox({
+  getConfig, setCookie, hub, memory, log, proactive,
+  stateFile = path.join(HOME, '.dsh', 'heybox-state.json'),
+  credFile = CRED_FILE, now = () => Date.now(),
+  clientFactory = (options) => new HeyboxClient(options),
+  verifier: injectedVerifier,
+  imagegen = null, memeRoot = null, imageDir = null,
+  tokenBrowser: injectedTokenBrowser = null,
+  dataDir: injectedDataDir = null,
+  guardOutbound = null,
+  workspaceDir = null,
+} = {}) {
+  const dataDir = injectedDataDir || fallbackDataDir
   let client = null
   let verifier = injectedVerifier || null
   let verifySession = null
@@ -172,6 +190,44 @@ export function createHeybox({ getConfig, setCookie, hub, memory, log, proactive
   let running = false
   let qrStarting = false
   let disposed = false
+
+  // 出站身份闸：小黑盒帖子/评论全网可见且撤不回，正文里出现主人/别人的账号标识一律不发。
+  const guard = (text, surface) => {
+    if (typeof guardOutbound !== 'function') return true
+    try {
+      const g = guardOutbound(text, {
+        surface,
+        ids: [getConfig().ownerQQ, getConfig().botQQ].filter(Boolean),
+        mode: getConfig().security?.identityGuard?.mode === 'warn' ? 'warn' : 'block',
+      })
+      if (g && g.hits && g.hits.length) log?.warn?.(`身份泄露闸拦下 → 小黑盒：${g.message}`)
+      return g ? g.ok : true
+    } catch (error) {
+      log?.debug?.('身份泄露闸判定出错：', error.message)
+      return true
+    }
+  }
+
+  function isImageBuffer(buf) {
+    if (!buf || buf.length < 12) return false
+    if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return true // PNG
+    if (buf[0] === 0xff && buf[1] === 0xd8) return true // JPEG
+    if (buf.slice(0, 3).toString('latin1') === 'GIF') return true // GIF
+    if (buf.slice(0, 4).toString('latin1') === 'RIFF' && buf.slice(8, 12).toString('latin1') === 'WEBP') return true // WebP
+    if (buf[0] === 0x42 && buf[1] === 0x4d) return true // BMP
+    return false
+  }
+
+  /** 配图只允许工作区 / 插件数据目录下的文件（防任意本地文件读）。 */
+  function imagePathAllowed(p) {
+    const roots = []
+    try { const ws = (typeof workspaceDir === 'function' ? workspaceDir() : workspaceDir) || getConfig().workspaceDir; if (ws) roots.push(path.resolve(ws)) } catch {}
+    try { roots.push(path.resolve(dataDir())) } catch {}
+    if (memeRoot) { try { roots.push(path.resolve(memeRoot)) } catch {} }
+    if (imageDir) { try { roots.push(path.resolve(imageDir)) } catch {} }
+    const resolved = path.resolve(String(p))
+    return roots.some((r) => resolved === r || resolved.startsWith(r + path.sep))
+  }
   const getVerifier = () => verifier ||= createVerifier({ profileDir: dataDir('heybox', 'edge-profile'), browserPath: () => getConfig().heybox?.browserPath || '', log, useEgo: () => getConfig().browser?.useDshSidebar === true })
 
   // 网页兜底发帖用的浏览器：跟扫码验证共用同一个 profile，登录态能复用；
@@ -792,6 +848,7 @@ export function createHeybox({ getConfig, setCookie, hub, memory, log, proactive
     if (!id) return { ok: false, message: '没看出帖子编号' }
     const t = String(text || '').trim().slice(0, 100)
     if (!t) return { ok: false, message: '评论内容空了' }
+    if (!guard(t, '小黑盒评论')) return { ok: false, message: '这条评论里有账号标识，不能发（账号信息不外传）' }
     if (left('comment') <= 0) return { ok: false, message: '今天的评论额度用完了' }
     await getClient().post('/bbs/app/comment/create', { link_id: id, text: t, root_id: String(rootId), reply_id: String(replyId), is_cy: '0' })
     bump('comment')
@@ -1013,6 +1070,7 @@ export function createHeybox({ getConfig, setCookie, hub, memory, log, proactive
     const t = String(title || '').trim()
     if (!t) return { ok: false, message: '标题不能空' }
     if (t.length > 30) return { ok: false, message: `标题 ${t.length} 字，太长了（最多 30 字）` }
+    if (!guard(`${t}\n${text}`, '小黑盒帖子')) return { ok: false, message: '帖子里有账号标识，不能发（账号信息不外传）' }
 
     // 先占额再干活：中间要等分区/话题/上传，几十秒的空窗期里并发进来的发帖
     // 会各自通过「还剩几篇」的检查，一天就能发出超过上限的篇数。
@@ -1096,7 +1154,9 @@ export function createHeybox({ getConfig, setCookie, hub, memory, log, proactive
     const actItems = await resolveHashtagItems(hashtags.length ? hashtags : (plan.hashtags || [])).catch(() => [])
     const readImg = (p, position) => {
       try {
+        if (!imagePathAllowed(p)) { log?.warn?.('配图不在允许的目录内，跳过：' + p); return null }
         const buf = fs.readFileSync(p)
+        if (!isImageBuffer(buf)) { log?.warn?.('配图文件不是有效图片，跳过：' + p); return null }
         const size = imageSize(buf) || {}
         return { type: 'img', buf, filename: path.basename(p), position, width: size.width, height: size.height }
       } catch { log?.warn?.('配图读不到，跳过：' + p); return null }
@@ -2398,5 +2458,15 @@ export function createHeybox({ getConfig, setCookie, hub, memory, log, proactive
     risk, clearRisk, qrStart, qrPoll, verifyStart, verifyFinish, verifyShow, shareToOwner, hasLogin, dispose,
     linkIdOf, postBrief, POST_STYLES, DEFAULT_POST_STYLE, runDuty, availableImages, planImages,
     maybeAutoPost, pendingPosts, postWindowOpen,
+    isImageBuffer, imagePathAllowed,
+    topicsForPanel: async (force = false) => {
+      if (force) {
+        const r = await refreshTopics(true)
+        const list = r.list || []
+        if (!list.length) return { ok: false, list: (Object.entries(TOPICS).map(([id, name]) => ({ id: String(id), name }))), message: '一个分区都没拉到' }
+        return { ok: true, list, cached: false }
+      }
+      return topicList()
+    },
   }
 }

@@ -1,4 +1,3 @@
-const __lib = globalThis.aurabot.lib // 插件内部源码（复制出来后靠它找到插件里的文件）
 // 社区模块（原内置）：刷小黑盒。小黑盒（xiaoheihe.cn）的游戏社区客户端——
 // 用主人的账号读信息流、帖子正文与热评，点赞、评论、发帖（文章模式，可带图），删自己的帖。
 // 接口签名、上传与业务逻辑在本模块的 api.mjs / site.mjs。
@@ -8,17 +7,22 @@ import { createHeybox } from './lib/site.mjs'
 import { createSharedBrowserAdapter } from './shared-browser.mjs'
 import * as browserLib from './lib/browser.mjs'
 import { createVerifier } from './lib/verify.mjs'
-const { defineTool, str } = __lib('tools/tools.js')
-const { profileToolVisible, profilePermits } = __lib('chat/access.js')
 
 export default {
   id: 'heybox',
   name: '刷小黑盒',
-  version: '1.6.3',
+  version: '1.7.0',
   api: 1,
   description: '用主人的账号逛小黑盒：看帖子和热评，点赞、评论、发帖（网页兜底）。支持谷时逛、扫码登录和浏览器验证。浏览器走宿主共享实例。',
   tab: 'heybox',
   setup(api) {
+    const lib = (path) => {
+      try { return api.lib(path) || {} } catch (error) { return {} }
+    }
+    const identity = lib('chat/identity-guard.js')
+    const { defineTool = api.defineTool, str = (desc) => ({ type: 'string', description: desc }) } = lib('tools/tools.js')
+    const { profileToolVisible = () => true, profilePermits = () => ({ ok: true }) } = lib('chat/access.js')
+
     const { hub, http } = api.core
     // 共享浏览器（宿主 ≥ 有 api.browser 的版本）；老宿主 fallback 走上游独立实例。
     // verify（浏览器验证兜底）和 tokenBrowser（扫码后取 x_xhh_tokenid、网页兜底发帖）
@@ -43,6 +47,9 @@ export default {
       setCookie: (cookie) => api.setConfig((cur) => ({ ...cur, heybox: { ...cur.heybox, cookie } })),
       // 生图能力（内置 imagegen 模块）：发帖时按字数自动画图，调不动就用表情包库兜底
       imagegen: api.lazy('imagegen'),
+      dataDir: api.dataDir,
+      guardOutbound: identity.guardOutbound,
+      workspaceDir: api.workspaceDir ? () => api.workspaceDir() : null,
     })
 
     // 定时自己逛一圈（只读，不写）
