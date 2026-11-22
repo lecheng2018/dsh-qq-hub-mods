@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-22T14:59:32.977Z",
+  "generatedAt": "2026-11-22T17:10:23.720Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
     {
@@ -202,7 +202,7 @@
     {
       "id": "heybox",
       "name": "刷小黑盒",
-      "version": "1.6.3",
+      "version": "1.7.0",
       "description": "用主人的账号逛小黑盒：看帖子和热评，点赞、评论、发帖（网页兜底）。支持谷时逛、扫码登录和浏览器验证。浏览器走宿主共享实例。",
       "category": "platform",
       "tags": [
@@ -223,10 +223,10 @@
         "browser"
       ],
       "replacesBuiltin": false,
-      "path": "heybox-v1.6.3/heybox.zip",
-      "sha256": "9366f4a654eaa30eb7e34adb4b41604b2948255d8dc2f615cf37953aa8cb8b60",
-      "size": 97750,
-      "commit": "15bff7501bdeb864c0945324797405b6cc62b911"
+      "path": "heybox-v1.7.0/heybox.zip",
+      "sha256": "0e858aefe8fcaebedeabdf676414d7049ee1096201aac408c5ad5c2f9ad6daf9",
+      "size": 98971,
+      "commit": "55ad21b192af3129be83a45dd39c5d4d1f3216e5"
     },
     {
       "id": "hongguo",
