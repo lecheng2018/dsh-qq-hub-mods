@@ -136,7 +136,7 @@ api.tool(() => api.settings().enabled ? [api.defineTool({
 | `api.log.debug/info/warn/error` | 字符串及多参日志 | 密钥、私聊和敏感响应不得直接输出；本仓不是 api.logger 用法 |
 | `api.use(id)` / `api.lazy(id)` | 获取其他模块返回的服务面；如 memory | 缺失降级；lazy 的完整解析规则未在此实现 |
 | memory 的 add/list/update/remove/recall/addEvent | 代码有 `add({ text, tags, importance, source, chatId })`、`list('')`、`update(id, { text })`、`remove(id)`、`recall(query, { limit })`、`addEvent({ text, tags, importance })` | 这些是模块服务用法，不是统一 `api.memory.*` 类型承诺；省略字段不能理解为全局访问授权 |
-| `api.ask({ system, text, maxTokens, temperature })` | await 后当模型文本处理，自行解析 | 未证完整参数全集、结构化返回或统一错误 |
+| `api.ask({ system, text, maxTokens, temperature, provider, model, reasoningEffort, signal })` | await 后当模型文本处理，自行解析；distill 用 provider+model 指定蒸馏专用模型（两者同时给出才生效，宿主 `host.js` 的 core.ask 原样透传给 `askModel`，与 token-guardian 同款用法） | 未证完整参数全集、结构化返回或统一错误；单个 provider/model 不构成有效覆盖 |
 | `api.think(prompt, opts)` | opts 见 title、timeoutMs；结果用于文本提取 | 不改写成 `api.llm.*` |
 | `api.dsh.get('web')` | 贴吧兜底 web.search({ query, maxResults: 8 }, signal)，读取 sources 的 url/title/snippet | 外部搜索插件可用性及完整返回需验证 |
 
@@ -146,7 +146,7 @@ api.tool(() => api.settings().enabled ? [api.defineTool({
 
 ## 6. 宿主内部依赖
 
-`api.lib(path)` 按宿主内部相对路径取得导出，本仓没有可宣称稳定的完整白名单。`api.core` 实见 http、hub、chatLog、onebot、personas、mutes；用例包括 onebot.state、mutes.muted(chatId)、personas.current()、hub.groupName(groupId)。
+`api.lib(path)` 按宿主内部相对路径取得导出，本仓没有可宣称稳定的完整白名单。`api.core` 实见 http、hub、chatLog、onebot、personas、mutes；用例包括 onebot.state、mutes.muted(chatId)、personas.current()、hub.groupName(groupId)。distill 另用 `api.core.listModels()` / `api.core.defaultModel()` 取模型目录（本仓核对到的宿主 core 已暴露这两个方法；模块侧仍按可选能力处理：取不到就只留「跟随主模型」）。
 
 `api.onebot(action, params)` 实见 upload_group_file 及群/私聊合并转发。调用代码 await 或捕获错误并不能证明统一返回类型、权限隔离或 Outbox 覆盖；它也不是已证的 `api.napcat.*` 命名空间。
 
@@ -180,7 +180,7 @@ const result = await call('/search', { query: '商品名' });
 | [api-pool](../modules/api-pool/index.mjs) | `/pool` → pool；`/save`（body: api）、`/del`（id）；`/groups` 与 `/settings`（groups/scope/blacklist 可选，scope 为 owner/everyone）；`/libs`、`/libSave`（lib）、`/libDel`（id）；`/export` → path，密钥不导出；`/import`（data JSON 字符串）、`/importUrl`（url）；`/test`（api）、`/testAll` → 测试结果。test 成功可更新已存项有效标记 |
 | [bili](../modules/bili/index.mjs) | `/bili/state`（含 `vision`、截图计数）、`/bili/account`、`/bili/run`、`/bili/replies`、`/bili/shots`；`/bili/shot/image`（q: file）直接写 JPEG 或 404；`/bili/shot/delete`（body: file）。实现是本模块自带的 `duty.mjs`，不是委托宿主 |
 | [delivery-inbox](../modules/delivery-inbox/index.mjs) | `/deliveries/exceptions`（req.query.limit，默认/上限 50）→ ok/items/counts/total/file，成功另有 savedAt，失败含 reason；只读 unknown/failed/cancelled 台账，无重发动作 |
-| [distill](../modules/distill/index.mjs) | `/status` → list/settings；`/rules`（q: groupId）；写动作 body 均读 groupId：`/promote`、`/toggle-lock`、`/delete-rule` 另读 ruleId；`/prune-noise`、`/consolidate`、`/clear-all`、`/trigger-now`；`/add-manual` 另读 situation/style；`/distill-history` 另读可选 days/sampleSize；`/simulate` 另读 userText → matchedRules/hit/stylePrompt/reply |
+| [distill](../modules/distill/index.mjs) | `/models` → list/active/defaultModel/invalid（模型目录来自宿主 `api.core.listModels`）；`/save-settings`（body: modelOverride）→ 写入模块设置后回 settings；`/status` → list/settings；`/rules`（q: groupId）；写动作 body 均读 groupId：`/promote`、`/toggle-lock`、`/delete-rule` 另读 ruleId；`/prune-noise`、`/consolidate`、`/clear-all`、`/trigger-now`；`/add-manual` 另读 situation/style；`/distill-history` 另读可选 days/sampleSize；`/simulate` 另读 userText → matchedRules/hit/stylePrompt/reply |
 | [douyin](../modules/douyin/index.mjs) | `/douyin/state`、`/douyin/account`、`/douyin/login`、`/douyin/login/status`、`/douyin/run`、`/douyin/dms`；`/douyin/window`（body: visible）、`/douyin/confirm-owner`（body: input）。委托宿主 dy |
 | [heybox](../modules/heybox/index.mjs) | `/heybox/state`、`/heybox/feed`、`/heybox/hot`、`/heybox/topics`、`/heybox/topics/refresh`、`/heybox/account`、`/heybox/run`、`/heybox/clear-quota`、`/heybox/styles`；`/heybox/login-cookie`（body: cookie）验证保存，仅返回 ok/message。其余多委托宿主 hb |
 | [meme-wiki](../modules/meme-wiki/index.mjs) | `/stats` → total/keywords/p50/p90/maxLen/lastSync；`/peek`（q: q）→ ok/text；`/sync` → added；`/import` 启动后台导入，`/import-status` 查进度；`/add`（body: title/text/可选 aliases）；`/manual` → items；`/del`（body: title） |

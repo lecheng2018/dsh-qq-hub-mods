@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
 import { buildDistillPrompt } from './prompt.mjs'
-import { verifyAndCleanRules } from './verifier.mjs'
+import { verifyAndCleanRules, safeParseJsonArray, salvageTruncatedObjects } from './verifier.mjs'
 import { createDistillStore } from './store.mjs'
 import { scanHistoryGroups, sampleGroupHistory } from './history-miner.mjs'
 import distillModule from './index.mjs'
@@ -284,4 +284,141 @@ test('module: 全局共享底座与分层路由与注入验证', async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
+})
+
+// 蒸馏专用模型（1.0.0-beta.6）：提炼负载和群聊回复负载分开挑模型。
+// 这里用 /simulate 打通同一条 askDistill 路径，省得再造一份 chatlog。
+test('module: 蒸馏专用模型——透传 provider/model，选错自动回退主模型', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'distill-model-test-'))
+  try {
+    const routes = new Map()
+    const listeners = new Map()
+    let settings = { enabled: true, minPromotionCount: 2, modelOverride: 'openai::gpt-5-mini' }
+    const calls = []
+    let failCustom = false
+
+    const mockApi = {
+      dataDir: () => dir,
+      settings: () => ({ ...settings }),
+      saveSettings: (patch) => { settings = { ...settings, ...patch }; return { ...settings } },
+      config: () => ({ botQQ: '10001' }),
+      log: { info() {}, warn() {}, debug() {} },
+      on: (event, fn) => { listeners.set(event, fn) },
+      context: () => {},
+      route: (path, fn) => { routes.set(path, fn) },
+      later: (ms, fn) => setTimeout(fn, ms),
+      core: {
+        personas: { currentPersonaText: () => '你是测试人格' },
+        listModels: async () => [
+          { provider: 'openai', model: 'gpt-5-mini', name: 'GPT-5 mini' },
+          { provider: 'deepseek', model: 'deepseek-chat', name: 'DeepSeek Chat' },
+        ],
+        defaultModel: () => ({ provider: 'deepseek', model: 'deepseek-chat' }),
+      },
+      ask: async (opts) => {
+        calls.push(opts)
+        if (failCustom && opts.provider === 'openai') throw new Error('model not found')
+        return '好的呀'
+      },
+    }
+
+    const mod = distillModule.setup(mockApi)
+    const modelsHandler = routes.get('/models')
+    const saveHandler = routes.get('/save-settings')
+    const simulateHandler = routes.get('/simulate')
+
+    // 1. /models 回宿主目录，并标出当前配置与主模型
+    let models = await modelsHandler()
+    assert.equal(models.ok, true)
+    assert.equal(models.list.length, 2)
+    assert.ok(models.list.some(m => m.value === 'openai::gpt-5-mini'))
+    assert.equal(models.active, 'openai::gpt-5-mini')
+    assert.equal(models.defaultModel, 'deepseek::deepseek-chat')
+
+    // 2. 指定模型 -> api.ask 必须拿到 provider/model（否则等于没生效）
+    await simulateHandler({ scope: '123', userText: '今天天气不错' })
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].provider, 'openai')
+    assert.equal(calls[0].model, 'gpt-5-mini')
+
+    // 3. 指定模型挂了 -> 记一条 warn，本次回退主模型（不传 provider/model）
+    failCustom = true
+    const fallbackRes = await simulateHandler({ scope: '123', userText: '今天天气不错' })
+    assert.equal(fallbackRes.ok, true)
+    assert.equal(calls.length, 3, '失败一次 + 回退一次，不能把提炼链路拖哑')
+    assert.equal(calls[2].provider, undefined)
+    assert.equal(calls[2].model, undefined)
+    failCustom = false
+
+    // 4. 手填写法也认 provider/模型名（模型 id 自带斜杠时整段留作模型名）
+    const saved = await saveHandler({ modelOverride: 'deepseek/deepseek-chat' })
+    assert.equal(saved.ok, true)
+    assert.equal(saved.modelOverride, 'deepseek/deepseek-chat')
+    await simulateHandler({ scope: '123', userText: '再试一句' })
+    assert.equal(calls[calls.length - 1].provider, 'deepseek')
+    assert.equal(calls[calls.length - 1].model, 'deepseek-chat')
+
+    // 5. 格式不对（没有分隔符）不能瞎猜 provider，按跟随主模型处理并报给面板
+    await saveHandler({ modelOverride: 'gpt-5-mini' })
+    models = await modelsHandler()
+    assert.equal(models.invalid, 'gpt-5-mini')
+    await simulateHandler({ scope: '123', userText: '第三句' })
+    assert.equal(calls[calls.length - 1].provider, undefined)
+
+    // 6. 清空 = 跟随主模型，面板恢复成默认项
+    await saveHandler({ modelOverride: '' })
+    models = await modelsHandler()
+    assert.equal(models.modelOverride, '')
+    assert.equal(models.active, '')
+
+    mod.dispose()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+// 截断抢救（fix/distill-truncated-json）：
+// 提炼一次喂 15 条消息、maxTokens 一紧，模型常常写到一半被截停，JSON 数组没有右括号。
+// 旧实现严格配对找不到闭合就返回 []，**前面已写完整的规则一起丢**（真机 2026-11-21：
+// 当天 21 次「未解析出有效规则」，日志回包里明明有完整对象）。纯损失，不是模型没产出。
+
+test('verifier: 被截断的 JSON 数组要抢救出已写完整的对象，而不是整包丢弃', () => {
+  const full = '[{"situation":"遇到反复弹窗等离谱烦恼","style":"开头惊呼wtf加反问为啥","source_id":1},'
+    + '{"situation":"追问别人一直没回复","style":"@对方说 你还没回答我呢","source_id":2},'
+    + '{"situation":"调侃对方说话太毒舌","style":"用句式 你还真是呢","source_id":3}]'
+
+  // 完整时行为不变（3 条，且不走抢救分支）
+  assert.equal(safeParseJsonArray(full).length, 3)
+
+  // 截到第 2 个对象完整、第 3 个写一半：应救回 2 条
+  const cut2 = full.slice(0, full.indexOf('"调侃对方说话太毒舌"') + 10)
+  assert.equal(safeParseJsonArray(cut2).length, 2, '前两条完整规则不能因为第三条没写完而丢掉')
+
+  // 只截完第 1 个对象：应救回 1 条
+  const cut1 = full.slice(0, full.indexOf('"追问别人') + 5)
+  assert.equal(safeParseJsonArray(cut1).length, 1)
+
+  // 一个完整对象都没有：不要瞎编
+  assert.deepEqual(safeParseJsonArray('[{"situation":"写到一半就'), [])
+})
+
+test('verifier: 抢救时字符串里的 ] 与 } 不能被当成数组/对象结束', () => {
+  const tricky = '[{"situation":"a b","style":"他说「]」还有 {}","source_id":1},{"situation":"c d","style":"半截'
+  const got = salvageTruncatedObjects(tricky)
+  assert.equal(got.length, 1)
+  assert.equal(got[0].style, '他说「]」还有 {}', '按 JSON 字符串规则跳过括号，不能提前截断')
+
+  // 转义引号同样不能把字符串判定提前结束。
+  // 这里必须让回包里是「反斜杠 + 引号」两个字面字符（JSON 的 \" ），不是 JS 先转义成裸引号 ——
+  // 裸引号进 JSON 本身就是非法，返回 0 才是对的（第一版用例写成裸引号，误判成函数 bug）。
+  const escaped = '[{"situation":"a b","style":"他说 \\"好\\" 然后","source_id":1},{"situation":"x'
+  assert.ok(escaped.includes('\\"'), '用例自身先确认回包里确实是转义序列')
+  assert.equal(salvageTruncatedObjects(escaped).length, 1)
+  assert.equal(salvageTruncatedObjects(escaped)[0].style, '他说 "好" 然后', '转义引号解析回裸引号')
+})
+
+test('verifier: 非 JSON 回包抢救也返回空（不许无中生有）', () => {
+  assert.deepEqual(salvageTruncatedObjects('模型这次什么都没给'), [])
+  assert.deepEqual(salvageTruncatedObjects(''), [])
+  assert.deepEqual(salvageTruncatedObjects(null), [])
 })

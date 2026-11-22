@@ -116,3 +116,36 @@ test('distill panel: 支持渲染全局公共底座与分层作用域徽章', ()
   assert.ok(json.includes('转为本群'), '必须提供转为本群专属的流转按钮')
   assert.ok(json.includes('设为全局'), '必须提供设为全局共享的流转按钮')
 })
+
+test('distill panel: 渲染蒸馏专用模型下拉（默认项为跟随主模型）', () => {
+  let stateIndex = 0
+  const stateValues = [
+    false,
+    [{ groupId: '10001', groupName: '测试群', isLiveActive: true, activeCount: 5 }],
+    '10001',
+  ]
+  const React = {
+    useState: (init) => {
+      const idx = stateIndex++
+      const val = idx < stateValues.length ? stateValues[idx] : (typeof init === 'function' ? init() : init)
+      return [val, () => {}]
+    },
+    useEffect: () => {},
+  }
+  const h = (type, props, ...children) => ({
+    type,
+    props: props || {},
+    children: children.flat(Infinity).filter(x => x !== null && x !== undefined && x !== false)
+  })
+  const ui = { Card: 'Card', Btn: 'Btn', Empty: 'Empty', Select: 'Select', Row: 'Row' }
+  const call = async (p) => (p === '/models'
+    ? { ok: true, list: [{ value: 'openai::gpt-5-mini', label: 'GPT-5 mini（openai）' }], modelOverride: '', defaultModel: 'deepseek::deepseek-chat' }
+    : { ok: true, list: [{ groupId: '10001', groupName: '测试群', isLiveActive: true, activeCount: 5 }] })
+
+  const PanelComp = new Function('React', 'h', 'ui', 'call', panelSrc)(React, h, ui, call)
+  const tree = PanelComp({ toast: () => {} })
+  const json = JSON.stringify(tree)
+
+  assert.ok(json.includes('蒸馏专用模型'), '面板必须渲染蒸馏专用模型卡片')
+  assert.ok(json.includes('跟随主模型'), '模型下拉默认项必须是跟随主模型')
+})
