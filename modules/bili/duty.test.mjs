@@ -42,7 +42,7 @@ function baseConfig(over = {}) {
   }
 }
 
-export function fakes({ decisions = [], replyText = '是呀 我也觉得', cfg = baseConfig(), postError = null, guardOk = true } = {}) {
+export function fakes({ decisions = [], replyText = '是呀 我也觉得', cfg = baseConfig(), postError = null, guardOk = true, titles = ['米饭大赛', '猫猫做饭'] } = {}) {
   const posted = []
   const sent = []
   const events = []
@@ -58,7 +58,7 @@ export function fakes({ decisions = [], replyText = '是呀 我也觉得', cfg =
       { bvid: 'BV1bbbbbbbbb', aid: 2, title: kw + ' 视频二', play: 30000, pubdate: Date.now() },
     ],
     popular: async () => [],
-    view: async ({ bvid }) => ({ bvid: bvid || 'BV1ccccccccc', aid: bvid === 'BV1bbbbbbbbb' ? 2 : 1, cid: 9, title: bvid === 'BV1bbbbbbbbb' ? '猫猫做饭' : '米饭大赛', author: 'UP主', play: 20000, desc: '简介' }),
+    view: async ({ bvid }) => ({ bvid: bvid || 'BV1ccccccccc', aid: bvid === 'BV1bbbbbbbbb' ? 2 : 1, cid: 9, title: bvid === 'BV1bbbbbbbbb' ? titles[1] : titles[0], author: 'UP主', play: 20000, desc: '简介' }),
     subtitle: async () => '大家好今天做饭',
     comments: async () => [{ name: '网友', text: '好香' }],
     postComment: async (aid, message, o) => {
@@ -257,6 +257,23 @@ test('单独选的模型：看画面用选的那个，没选就跟随全局', as
   assert.equal(seenVision.length, 1, '开着看画面就会调一次')
   assert.deepEqual(seenVision[0].model, { provider: 'fast', model: 'fast-vision', reasoningEffort: '' })
   assert.ok(seenVision[0].deps.findFfmpeg === undefined || typeof seenVision[0].deps.findFfmpeg === 'function')
+})
+
+test('记忆截断按码点：标题/感受/知识里带 emoji 也不会写出孤立代理项（#226）', async () => {
+  // 'a' + 30 个 emoji：第 30 个 UTF-16 单元正好落在第二个 emoji 的高位，
+  // 老写法 s.slice(0, 30) 会留下孤立的 high surrogate，向量化时 400。
+  const title = 'a' + '🐟'.repeat(30)
+  const { b, events, facts } = fakes({
+    titles: [title, '猫猫做饭'],
+    decisions: [{ i: 1, feeling: '🐟'.repeat(40), comment: '', share: '', remember: '🐟'.repeat(100) }],
+  })
+  await b.run({ force: true })
+  assert.ok(events.length >= 1 && facts.length === 1, '想法和知识都要写进记忆')
+  for (const text of [...events, ...facts]) {
+    assert.equal(typeof text.isWellFormed, 'function', '需要 Node 20+ 的 String#isWellFormed')
+    assert.equal(text.isWellFormed(), true, '不能出现孤立代理项：' + JSON.stringify(text.slice(0, 40)))
+  }
+  assert.ok(Array.from(events[0]).length < events[0].length, 'emoji 按码点算一个字')
 })
 
 test('刷一轮会落盘到 bili.json（数据位置不变）', async () => {
