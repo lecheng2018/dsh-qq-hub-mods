@@ -285,3 +285,94 @@ test('module: 全局共享底座与分层路由与注入验证', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+// 蒸馏专用模型（1.0.0-beta.6）：提炼负载和群聊回复负载分开挑模型。
+// 这里用 /simulate 打通同一条 askDistill 路径，省得再造一份 chatlog。
+test('module: 蒸馏专用模型——透传 provider/model，选错自动回退主模型', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'distill-model-test-'))
+  try {
+    const routes = new Map()
+    const listeners = new Map()
+    let settings = { enabled: true, minPromotionCount: 2, modelOverride: 'openai::gpt-5-mini' }
+    const calls = []
+    let failCustom = false
+
+    const mockApi = {
+      dataDir: () => dir,
+      settings: () => ({ ...settings }),
+      saveSettings: (patch) => { settings = { ...settings, ...patch }; return { ...settings } },
+      config: () => ({ botQQ: '10001' }),
+      log: { info() {}, warn() {}, debug() {} },
+      on: (event, fn) => { listeners.set(event, fn) },
+      context: () => {},
+      route: (path, fn) => { routes.set(path, fn) },
+      later: (ms, fn) => setTimeout(fn, ms),
+      core: {
+        personas: { currentPersonaText: () => '你是测试人格' },
+        listModels: async () => [
+          { provider: 'openai', model: 'gpt-5-mini', name: 'GPT-5 mini' },
+          { provider: 'deepseek', model: 'deepseek-chat', name: 'DeepSeek Chat' },
+        ],
+        defaultModel: () => ({ provider: 'deepseek', model: 'deepseek-chat' }),
+      },
+      ask: async (opts) => {
+        calls.push(opts)
+        if (failCustom && opts.provider === 'openai') throw new Error('model not found')
+        return '好的呀'
+      },
+    }
+
+    const mod = distillModule.setup(mockApi)
+    const modelsHandler = routes.get('/models')
+    const saveHandler = routes.get('/save-settings')
+    const simulateHandler = routes.get('/simulate')
+
+    // 1. /models 回宿主目录，并标出当前配置与主模型
+    let models = await modelsHandler()
+    assert.equal(models.ok, true)
+    assert.equal(models.list.length, 2)
+    assert.ok(models.list.some(m => m.value === 'openai::gpt-5-mini'))
+    assert.equal(models.active, 'openai::gpt-5-mini')
+    assert.equal(models.defaultModel, 'deepseek::deepseek-chat')
+
+    // 2. 指定模型 -> api.ask 必须拿到 provider/model（否则等于没生效）
+    await simulateHandler({ scope: '123', userText: '今天天气不错' })
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].provider, 'openai')
+    assert.equal(calls[0].model, 'gpt-5-mini')
+
+    // 3. 指定模型挂了 -> 记一条 warn，本次回退主模型（不传 provider/model）
+    failCustom = true
+    const fallbackRes = await simulateHandler({ scope: '123', userText: '今天天气不错' })
+    assert.equal(fallbackRes.ok, true)
+    assert.equal(calls.length, 3, '失败一次 + 回退一次，不能把提炼链路拖哑')
+    assert.equal(calls[2].provider, undefined)
+    assert.equal(calls[2].model, undefined)
+    failCustom = false
+
+    // 4. 手填写法也认 provider/模型名（模型 id 自带斜杠时整段留作模型名）
+    const saved = await saveHandler({ modelOverride: 'deepseek/deepseek-chat' })
+    assert.equal(saved.ok, true)
+    assert.equal(saved.modelOverride, 'deepseek/deepseek-chat')
+    await simulateHandler({ scope: '123', userText: '再试一句' })
+    assert.equal(calls[calls.length - 1].provider, 'deepseek')
+    assert.equal(calls[calls.length - 1].model, 'deepseek-chat')
+
+    // 5. 格式不对（没有分隔符）不能瞎猜 provider，按跟随主模型处理并报给面板
+    await saveHandler({ modelOverride: 'gpt-5-mini' })
+    models = await modelsHandler()
+    assert.equal(models.invalid, 'gpt-5-mini')
+    await simulateHandler({ scope: '123', userText: '第三句' })
+    assert.equal(calls[calls.length - 1].provider, undefined)
+
+    // 6. 清空 = 跟随主模型，面板恢复成默认项
+    await saveHandler({ modelOverride: '' })
+    models = await modelsHandler()
+    assert.equal(models.modelOverride, '')
+    assert.equal(models.active, '')
+
+    mod.dispose()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

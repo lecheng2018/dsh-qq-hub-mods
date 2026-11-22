@@ -8,7 +8,7 @@ import { scanHistoryGroups, sampleGroupHistory } from './history-miner.mjs'
 export default {
   id: 'distill',
   name: '群友蒸馏（测试版）',
-  version: '1.0.0-beta.5',
+  version: '1.0.0-beta.6',
   api: 1,
   description: '【测试版】移植 MaiBot 语感提炼机制，高信噪比提取群友接话习惯与口癖，设置频次门槛，绝不强行加戏。',
   panel: 'panel.js',
@@ -21,6 +21,7 @@ export default {
     minPromotionCount: 3,   // 准入门槛：至少出现3次或锁定的规则才允许实际生效
     maxInjectedRules: 1,    // 命中时最多参考1条，杜绝注意力过载与刻意造句
     activeGroups: '',
+    modelOverride: '',      // 蒸馏专用模型 provider::模型名；留空跟随主模型
   },
   settings: [
     { key: 'enabled', label: '启用群友蒸馏', type: 'switch' },
@@ -30,6 +31,9 @@ export default {
     { key: 'maxCapacity', label: '每群规则库上限', type: 'number', min: 30, max: 500 },
     { key: 'maxInjectedRules', label: '单次回复最多参考规则数', type: 'number', min: 1, max: 3 },
     { key: 'activeGroups', label: '指定生效群号（逗号分隔，留空全生效）', type: 'text' },
+    // 面板里是下拉选模型，这里留一个手填入口：面板没加载出来时也能配置。
+    // 写法 provider::模型名（也接受 provider/模型名），留空 = 跟随主模型。
+    { key: 'modelOverride', label: '蒸馏专用模型（provider::模型名，留空跟随主模型）', type: 'text', placeholder: '例如 openai::gpt-5-mini' },
   ],
 
   setup(api) {
@@ -47,6 +51,38 @@ export default {
       if (!activeStr) return true
       const allowed = activeStr.split(/[,，\s\n]+/).map(s => s.trim()).filter(Boolean)
       return allowed.includes(String(groupId))
+    }
+
+    // ---------- 蒸馏专用模型 ----------
+    // 提炼和群聊回复是两种负载：提炼要吞一长串流水、逐条吐 JSON（吃上下文、不吃灵性），
+    // 群聊回复要自然口语（吃灵性、不需要大窗口）。共用一个模型只能互相将就，
+    // 所以给蒸馏单独开一个可选项；留空就沿用主模型，行为和以前完全一致。
+    function readModelOverride() {
+      const raw = String(api.settings().modelOverride || '').trim()
+      if (!raw) return null
+      // provider::模型名 / provider/模型名 都认。模型 id 自己可能带斜杠
+      //（deepseek-ai/DeepSeek-V3 这类），所以只按第一个分隔符切，剩下的整体当模型名。
+      const m = /^([^:/|\s]+)\s*(?:::|[/|])\s*(.+)$/.exec(raw)
+      if (!m) return { invalid: raw }
+      return { provider: m[1], model: m[2].trim() }
+    }
+
+    // 指定模型挂了（下架 / 改了 id / 额度用完）不能把整条提炼链路拖哑：
+    // 记一条 warn，这一次退回主模型，规则照常落库。
+    async function askDistill(opts) {
+      const sel = readModelOverride()
+      if (sel?.invalid) {
+        api.log.warn(`[群友蒸馏] 蒸馏模型配置「${sel.invalid}」格式不对（应为 provider::模型名），本次回退主模型`)
+        return api.ask(opts)
+      }
+      if (sel) {
+        try {
+          return await api.ask({ ...opts, provider: sel.provider, model: sel.model })
+        } catch (error) {
+          api.log.warn(`[群友蒸馏] 蒸馏模型 ${sel.provider}/${sel.model} 调用失败（${error.message}），本次回退主模型`)
+        }
+      }
+      return api.ask(opts)
     }
 
     function recordRecentChat(groupId, who, text) {
@@ -108,7 +144,7 @@ export default {
     async function runDistillLines(groupId, lines) {
       try {
         const { system, text } = buildDistillPrompt(lines)
-        const out = await api.ask({ system, text, maxTokens: 1500, temperature: 0.3 })
+        const out = await askDistill({ system, text, maxTokens: 1500, temperature: 0.3 })
         const rawRules = safeParseJsonArray(out)
 
         if (!rawRules || !rawRules.length) {
@@ -178,6 +214,54 @@ export default {
 
     // 面板后端路由
     const readBody = async (req) => (api.core?.http?.body ? api.core.http.body(req) : (req?.body || req || {}))
+
+    // 可选的蒸馏模型清单：面板下拉直接用宿主给的模型目录，不在模块里硬编码模型名
+    //（模型会下架、会改名，硬编码迟早变成一堆选不了的幽灵选项）。
+    api.route('/models', async () => {
+      const sel = readModelOverride()
+      let list = []
+      try {
+        const all = await (api.core?.listModels?.() || [])
+        list = (Array.isArray(all) ? all : [])
+          .filter(m => m && m.provider && m.model)
+          .map(m => ({
+            value: `${m.provider}::${m.model}`,
+            // 同名模型可能挂在多个 provider 下，标签带上 provider 才分得清
+            label: `${m.name || m.model}（${m.provider}）`,
+          }))
+      } catch (error) {
+        api.log.warn(`[群友蒸馏] 读取模型目录失败: ${error.message}`)
+      }
+      let defaultModel = ''
+      try {
+        const d = api.core?.defaultModel?.()
+        if (d && d.provider && d.model) defaultModel = `${d.provider}::${d.model}`
+      } catch {}
+      return {
+        ok: true,
+        list,
+        modelOverride: api.settings().modelOverride || '',
+        invalid: sel?.invalid || '',
+        defaultModel,
+        // 配置里写的是哪个模型 —— 面板据此判断它是否还在目录里（下架时照样显示出来，别静默丢配置）
+        active: sel && !sel.invalid ? `${sel.provider}::${sel.model}` : '',
+      }
+    })
+
+    // 面板下拉保存（走模块设置，和设置页那个手填框是同一个键）
+    api.route('/save-settings', async (req) => {
+      const body = await readBody(req)
+      if (!body || !Object.prototype.hasOwnProperty.call(body, 'modelOverride')) {
+        return { ok: false, message: '没有要保存的设置' }
+      }
+      const modelOverride = String(body.modelOverride || '').trim()
+      try {
+        api.saveSettings({ modelOverride })
+      } catch (error) {
+        return { ok: false, message: '保存失败：' + error.message }
+      }
+      return { ok: true, modelOverride, settings: api.settings() }
+    })
 
     api.route('/status', async () => {
       const storeGroups = new Set(store.getAllGroupIds())
@@ -402,7 +486,7 @@ export default {
       const basePersona = api.core?.personas?.currentPersonaText?.() || '你是大肥鱼，一只性格活泼随和的数字生命。'
       const system = `${basePersona}\n\n${stylePrompt}`
 
-      const reply = await api.ask({
+      const reply = await askDistill({
         system,
         text: userText,
         maxTokens: 500,
