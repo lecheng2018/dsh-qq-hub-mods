@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { clockOf, pickShot, createShotStore } from './shots.mjs'
 import { createBili } from './duty.mjs'
-import { fakeStore, noopLog } from './testkit.mjs'
+import { fakeStore, noopLog } from './test/testkit.mjs'
 
 const mkStore = (max = 10) => {
   const store = fakeStore()

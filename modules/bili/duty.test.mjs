@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createBili, filterVideos, digestOf, pickJson } from './duty.mjs'
 import { biliModelOf } from './vision.mjs'
-import { fakeStore, noopLog } from './testkit.mjs'
+import { fakeStore, noopLog } from './test/testkit.mjs'
 
 function baseConfig(over = {}) {
   return {
