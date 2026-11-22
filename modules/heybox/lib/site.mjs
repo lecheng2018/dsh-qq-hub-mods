@@ -2138,8 +2138,10 @@ export function createHeybox({
    *     到点直接补发，不受逛的额度和冷却牵连（额度用完 postWindowOpen 自己返回 false）。
    *   跳过时返回 { due: false }（不干活的明确回执），真正跑完返回 { due: true }。
    */
+  const flight = (globalThis.__qqhubHeyboxDuty ??= { inFlight: false })
+
   async function tick({ memory, owner } = {}) {
-    if (running || !autoEnabled() || risk().leftMs > 0) return { due: false }
+    if (flight.inFlight || running || !autoEnabled() || risk().leftMs > 0) return { due: false }
     const cfg = getConfig(), c = cfg.heybox || {}, at = new Date(nowMs())
     if (!awakeNow(cfg, at)) return { due: false }
     const st = readState()
@@ -2161,6 +2163,7 @@ export function createHeybox({
     }
     if (!browseDue && !postDue) return { due: false }
 
+    flight.inFlight = true
     running = true
     const myToken = ++runToken
     try {
@@ -2204,7 +2207,10 @@ export function createHeybox({
       fresh.lastSkipReason = e.message
       writeState(fresh)
       log?.warn?.('小黑盒后台会话失败：' + e.message)
-    } finally { running = false }
+    } finally {
+      flight.inFlight = false
+      running = false
+    }
     return { due: true }
   }
 
