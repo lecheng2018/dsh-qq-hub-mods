@@ -292,7 +292,8 @@ const STYLE_INJECTION = `
 }
 `
 
-return function DistillPanel({ toast }) {
+return function DistillPanel(props) {
+  const { toast, reload } = props || {}
   const { Card, Btn, Empty, Select, Row } = ui
   const [loading, setLoading] = useState(true)
   const [groups, setGroups] = useState([])
@@ -318,6 +319,37 @@ return function DistillPanel({ toast }) {
   const [adding, setAdding] = useState(false)
   const [triggering, setTriggering] = useState(false)
   const [actionBusy, setActionBusy] = useState(false)
+
+  // 蒸馏专用模型（留空 = 跟随主模型）
+  const [modelInfo, setModelInfo] = useState(null)
+  const [savingModel, setSavingModel] = useState(false)
+
+  const loadModels = async () => {
+    try {
+      const res = await call('/models')
+      if (res && res.ok) setModelInfo(res)
+    } catch (e) {
+      // 模型目录读不到不该挡住房规则库：静默降级成「只有跟随主模型」一项
+    }
+  }
+
+  const handleModelChange = async (value) => {
+    setSavingModel(true)
+    try {
+      const res = await call('/save-settings', { modelOverride: value })
+      if (res && res.ok) {
+        setModelInfo(prev => ({ ...(prev || {}), modelOverride: value, active: value }))
+        toast && toast(value ? '蒸馏已改用指定模型' : '蒸馏已跟随主模型', 'ok')
+        reload && reload()
+      } else {
+        toast && toast((res && res.message) || '保存失败', 'err')
+      }
+    } catch (e) {
+      toast && toast(e.message || '保存失败', 'err')
+    } finally {
+      setSavingModel(false)
+    }
+  }
 
   const loadStatus = async () => {
     try {
@@ -350,6 +382,7 @@ return function DistillPanel({ toast }) {
   }
 
   useEffect(() => { loadStatus() }, [])
+  useEffect(() => { loadModels() }, [])
   useEffect(() => {
     if (selectedGroup) {
       loadRules(selectedGroup)
@@ -522,6 +555,21 @@ return function DistillPanel({ toast }) {
 
   const curGroupInfo = groups.find(g => g.groupId === selectedGroup)
 
+  // 蒸馏模型下拉：第一项永远是「跟随主模型」，其余来自宿主模型目录。
+  // 配置里写的模型如果已经下架（目录里找不到），照样列出来并标黄，别让配置静默消失。
+  const knownModels = (modelInfo && Array.isArray(modelInfo.list))
+    ? modelInfo.list.filter(m => m && typeof m.value === 'string' && m.value && typeof m.label === 'string')
+    : []
+  // 模型目录是异步拉的：还没回来时先用 settings 里的值，免得下拉在加载瞬间显示成空
+  const currentModel = String(
+    (modelInfo && modelInfo.modelOverride !== undefined ? modelInfo.modelOverride : props?.settings?.modelOverride) || ''
+  )
+  const modelOptions = [{ value: '', label: '跟随主模型（默认，提炼和群聊回复用同一个）' }]
+    .concat(knownModels.map(m => ({ value: m.value, label: m.label })))
+  if (currentModel && !knownModels.some(m => m.value === currentModel)) {
+    modelOptions.push({ value: currentModel, label: `⚠️ ${currentModel}（当前配置，模型目录里没找到）` })
+  }
+
   return h('div', { className: 'distill-panel-root' },
     h('style', null, STYLE_INJECTION),
 
@@ -590,6 +638,33 @@ return function DistillPanel({ toast }) {
               )
             )
           )
+    ),
+
+    // 蒸馏专用模型卡片：提炼负载和群聊回复负载分开挑模型
+    h(Card, {
+      title: '🧠 蒸馏专用模型',
+      desc: '提炼要吞长流水、逐条吐 JSON；群聊回复要口语自然。两者用同一个模型只能互相将就，这里可以单独指定提炼所用的模型。'
+    },
+      h(Row, { label: '提炼 / 模拟测试使用' },
+        h(Select, {
+          value: currentModel,
+          width: '100%',
+          disabled: savingModel,
+          onChange: handleModelChange,
+          options: modelOptions,
+        })
+      ),
+      h('div', { className: 'ab-small ab-muted', style: { marginTop: 6 } },
+        modelInfo && modelInfo.defaultModel
+          ? `当前主模型：${modelInfo.defaultModel}。指定模型不可用时会自动回退主模型，不会中断提炼。`
+          : '留空即跟随主模型。指定模型不可用时会自动回退主模型，不会中断提炼。'
+      ),
+      modelInfo && modelInfo.invalid
+        ? h('div', { className: 'ab-note err', style: { marginTop: 6 } }, `配置「${modelInfo.invalid}」格式不对，应为 provider::模型名，当前按跟随主模型处理。`)
+        : null,
+      h('div', { className: 'ab-small ab-muted', style: { marginTop: 4 } },
+        '也可以在「设置」里手填 provider::模型名（例如 openai::gpt-5-mini），两处是同一个配置项。'
+      )
     ),
 
     // 从本地历史聊天记录批量提炼卡片
