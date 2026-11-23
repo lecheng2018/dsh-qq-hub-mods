@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-23T13:54:55.953Z",
+  "generatedAt": "2026-11-23T14:09:48.682Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
     {
@@ -290,7 +290,7 @@
     {
       "id": "multi-parser",
       "name": "内容解析",
-      "version": "1.0.2",
+      "version": "1.0.3",
       "description": "自动识别消息中的 B站/微博/小红书/知乎/微信/贴吧/番茄/GitHub 等链接，发送无水印图文视频并支持 AI 上下文注入。",
       "category": "tools",
       "tags": [
@@ -310,10 +310,10 @@
         "tools"
       ],
       "replacesBuiltin": false,
-      "path": "multi-parser-v1.0.2/multi-parser.zip",
-      "sha256": "2885ac2eec391e6a11ccb409f9d4b529fbc635b54b81bf45df6840d6a33ce044",
-      "size": 23049,
-      "commit": "f00bc013fea64921f284f667d75013dc983f4573"
+      "path": "multi-parser-v1.0.3/multi-parser.zip",
+      "sha256": "c14dc8a0dfa02e6b588425db327779b577d34f14a8779da868d3d43b3fb9dd39",
+      "size": 23702,
+      "commit": "14aaf753288b8d159f5ac415470700f646b730dd"
     },
     {
       "id": "price-watch",
