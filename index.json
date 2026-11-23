@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generatedAt": "2026-11-22T17:10:23.720Z",
+  "generatedAt": "2026-11-23T13:54:55.953Z",
   "assetsBase": "https://github.com/lecheng2018/dsh-qq-hub-mods/releases/download/",
   "modules": [
     {
@@ -149,7 +149,7 @@
     {
       "id": "douyin",
       "name": "刷抖音",
-      "version": "2.2.0",
+      "version": "2.3.0",
       "description": "用共享浏览器刷抖音：看推荐、点赞评论、评论区接着聊（默认关）、分享给主人；别人发来链接能点开看。",
       "category": "platform",
       "tags": [
@@ -161,7 +161,7 @@
       "author": "lecheng2018",
       "license": "MIT",
       "api": 1,
-      "minPluginVersion": "1.4.3",
+      "minPluginVersion": "1.4.7-test.20261121.1",
       "requires": [],
       "capabilities": [
         "network",
@@ -171,10 +171,10 @@
         "tools"
       ],
       "replacesBuiltin": false,
-      "path": "douyin-v2.2.0/douyin.zip",
-      "sha256": "279ee75e2663e77674b7a3ca133a4cac61d3c9cf0e33817a9db0e5ca5bb3fff2",
-      "size": 4846,
-      "commit": "15bff7501bdeb864c0945324797405b6cc62b911"
+      "path": "douyin-v2.3.0/douyin.zip",
+      "sha256": "124bc22d027a7394c00afbbcf42314ca9953dd1dde65490aa9a9abb11fcb4be0",
+      "size": 43380,
+      "commit": "a21dfdfff447d66067046a3555f2371cb6aca7f3"
     },
     {
       "id": "group-topic-boundary",
