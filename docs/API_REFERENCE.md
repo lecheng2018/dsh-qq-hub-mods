@@ -150,7 +150,7 @@ api.tool(() => api.settings().enabled ? [api.defineTool({
 
 `api.onebot(action, params)` 实见 upload_group_file 及群/私聊合并转发。调用代码 await 或捕获错误并不能证明统一返回类型、权限隔离或 Outbox 覆盖；它也不是已证的 `api.napcat.*` 命名空间。
 
-bili 1.2.0 起自带完整实现（`modules/bili/{api,duty,vision,shots}.mjs`），只经 `api.lib` 取通用能力：`core/store.js`、`core/llm.js`、`core/img.js`、`core/net.js`、`chat/reply.js`、`chat/identity-guard.js`；这些仍是宿主内部路径，不是稳定公共 API。douyin、heybox、qzone-social 仍很大程度依赖宿主功能，不能只靠包装模块补写其底层完整 API。当前源码也没有支持顶层 `api.http`、`api.kv`、`api.logger`、`api.llm`、`api.notify`、`api.scheduler`、`api.panel` 等接口的充分证据；使用实际的 core.http、log、ask/think、调度函数和面板闭包描述。
+bili 1.2.0、heybox 1.7.0、douyin 2.3.0 起自带完整实现（`modules/bili/{api,duty,vision,shots}.mjs`、`modules/heybox/*`、`modules/douyin/lib/*`），只经 `api.lib` / `api.core` 取通用能力：`core/store.js`、`core/llm.js`、`core/img.js`、`core/net.js`、`chat/reply.js`、`chat/identity-guard.js`、`chat/access.js`、`api.workspaceDir`；这些仍是宿主内部路径，不是稳定公共 API。qzone-social 仍是壳（实现留在插件 `features/qzone-social.js`，经 `api.lib` 引用），不能只靠包装模块补写其底层完整 API。当前源码也没有支持顶层 `api.http`、`api.kv`、`api.logger`、`api.llm`、`api.notify`、`api.scheduler`、`api.panel` 等接口的充分证据；使用实际的 core.http、log、ask/think、调度函数和面板闭包描述。
 
 归档 `_qq-enhance` 的 saveSettings、activity、onebot/state、config 事件等不列为当前市场 SDK 的已证能力。
 
@@ -181,7 +181,7 @@ const result = await call('/search', { query: '商品名' });
 | [bili](../modules/bili/index.mjs) | `/bili/state`（含 `vision`、截图计数）、`/bili/account`、`/bili/run`、`/bili/replies`、`/bili/shots`；`/bili/shot/image`（q: file）直接写 JPEG 或 404；`/bili/shot/delete`（body: file）。实现是本模块自带的 `duty.mjs`，不是委托宿主 |
 | [delivery-inbox](../modules/delivery-inbox/index.mjs) | `/deliveries/exceptions`（req.query.limit，默认/上限 50）→ ok/items/counts/total/file，成功另有 savedAt，失败含 reason；只读 unknown/failed/cancelled 台账，无重发动作 |
 | [distill](../modules/distill/index.mjs) | `/models` → list/active/defaultModel/invalid（模型目录来自宿主 `api.core.listModels`）；`/save-settings`（body: modelOverride）→ 写入模块设置后回 settings；`/status` → list/settings；`/rules`（q: groupId）；写动作 body 均读 groupId：`/promote`、`/toggle-lock`、`/delete-rule` 另读 ruleId；`/prune-noise`、`/consolidate`、`/clear-all`、`/trigger-now`；`/add-manual` 另读 situation/style；`/distill-history` 另读可选 days/sampleSize；`/simulate` 另读 userText → matchedRules/hit/stylePrompt/reply |
-| [douyin](../modules/douyin/index.mjs) | `/douyin/state`、`/douyin/account`、`/douyin/login`、`/douyin/login/status`、`/douyin/run`、`/douyin/dms`；`/douyin/window`（body: visible）、`/douyin/confirm-owner`（body: input）。委托宿主 dy |
+| [douyin](../modules/douyin/index.mjs) | `/douyin/state`、`/douyin/account`、`/douyin/login`、`/douyin/login/status`、`/douyin/run`、`/douyin/dms`；`/douyin/window`（body: visible）、`/douyin/confirm-owner`（body: input）。模块自带实现（`lib/duty.mjs`） |
 | [heybox](../modules/heybox/index.mjs) | `/heybox/state`、`/heybox/feed`、`/heybox/hot`、`/heybox/topics`、`/heybox/topics/refresh`、`/heybox/account`、`/heybox/run`、`/heybox/clear-quota`、`/heybox/styles`；`/heybox/login-cookie`（body: cookie）验证保存，仅返回 ok/message。其余多委托宿主 hb |
 | [meme-wiki](../modules/meme-wiki/index.mjs) | `/stats` → total/keywords/p50/p90/maxLen/lastSync；`/peek`（q: q）→ ok/text；`/sync` → added；`/import` 启动后台导入，`/import-status` 查进度；`/add`（body: title/text/可选 aliases）；`/manual` → items；`/del`（body: title） |
 | [multi-parser](../modules/multi-parser/index.mjs) | `/multi-parser/test`（body: url）→ ok/result 或 ok:false/message；`/multi-parser/status` → active/recentCount/cookieStatus/platforms，cookie 仅回是否已配置 |
