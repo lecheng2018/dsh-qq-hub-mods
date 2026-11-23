@@ -1,28 +1,62 @@
 // 刷抖音（商店版）：专用浏览器里登录一次；定时自己刷推荐、点赞、评论（特别想让主人看的会在评论里真·@主人），
 // 看到好玩的分享给主人（抖音私信 / QQ）；别人发来抖音链接，她也能点开看完再聊。
 // 浏览 / 点赞 / 评论 / 分享各有权限（面板「权限」页），默认仅主人。
-// 实现留在插件包内（douyin/duty.js 等），本模块只做接线（壳上商店阶段）。
+//
+// 2.3.0 起实现整包搬进本模块（lib/duty、site、browser、media），插件本体不再有 src/douyin；
+// 插件只提供通用能力，靠 api.lib / api.core 注入（数据目录、出站身份闸、权限档、静默判定、工作区目录、
+// 共享浏览器）。这样模块能单独迭代、单独测试：本仓测试全部用假 site / 假 store，不连外网。
+import { createDouyin } from './lib/duty.mjs'
+
 export default {
   id: 'douyin',
   name: '刷抖音',
-  version: '2.2.0', // 与 module.json 同步（MOD-02：版本与清单一致）
+  version: '2.3.0', // 与 module.json 同步（MOD-02：版本与清单一致）
   description: '专用浏览器刷抖音：看推荐、点赞、评论（可在评论里真·@主人），好玩的分享给主人（抖音私信 / QQ）；别人发来链接能点开看（douyin_watch / douyin_like / douyin_comment / douyin_browse）',
   tab: 'douyin',
   setup(api) {
-    const { createDouyin } = api.lib('douyin/duty.js')
-    const { defineTool, str } = api.lib('tools/tools.js')
-    const { profileToolVisible, profilePermits } = api.lib('chat/access.js')
+    // 插件内部能力一律按「可缺」取：老版本插件少哪个就在 setup 时报清楚，别让模块静默半死。
+    const lib = (path) => {
+      try { return api.lib(path) || {} } catch (error) { return {} }
+    }
+    const store = lib('core/store.js')
+    const reply = lib('chat/reply.js')
+    const access = lib('chat/access.js')
+    const identity = lib('chat/identity-guard.js')
+    const { defineTool, str } = lib('tools/tools.js')
+    const { profileToolVisible, profilePermits } = access
+
+    const missing = [
+      ['core/store.js', typeof store.dataDir === 'function'],
+      ['chat/reply.js', typeof reply.isSilence === 'function'],
+      ['chat/access.js', typeof access.permOf === 'function' && typeof profileToolVisible === 'function' && typeof profilePermits === 'function'],
+      ['chat/identity-guard.js', typeof identity.guardOutbound === 'function'],
+      ['tools/tools.js', typeof defineTool === 'function'],
+      ['共享浏览器（api.browser，插件 1.4.7 起）', typeof api.browser === 'function'],
+    ].filter(([, ok]) => !ok).map(([name]) => name)
+    if (missing.length) throw new Error(`刷抖音模块缺宿主能力：${missing.join('、')}（插件版本太旧）`)
 
     const { hub, http } = api.core
     // 主人的抖音号只由「核对」写入（面板存配置时不能直接改 secUid）
     const setOwner = (owner) => api.setConfig((cur) => ({ ...cur, douyin: { ...cur.douyin, owner } }))
-    // 共享浏览器：新宿主给 api.browser()，老宿主没有就退回抖音自己起（createDouyin 里自动挑）
+    // 共享浏览器：宿主统一的那一个；没开时 duty 会在面板 / 工具里明确报「共享浏览器没开」，不再自带专用浏览器
     const dy = createDouyin({
-      getConfig: api.config, getSettings: api.settings, setOwner, hub, memory: api.lazy('memory'), log: api.log,
+      getConfig: api.config,
+      getSettings: api.settings,
+      setOwner,
+      hub,
+      store,
+      isSilence: reply.isSilence,
+      permOf: access.permOf,
+      guardOutbound: identity.guardOutbound,
+      workspaceDir: (...parts) => api.workspaceDir(...parts),
+      memory: api.lazy('memory'),
+      log: api.log,
       browser: api.browser?.() || null,
       proactive: api.proactive, // 出站治理面：旧宿主没有时 duty 内部可选链降级回 hub.sendText
     })
     api.every(60_000, () => dy.tick(), '刷抖音')
+    // 模块停用 / 被替换时停掉在途一轮、释放浏览器租约（宿主负责撤定时器）
+    api.onDispose?.(() => { try { dy.dispose() } catch (error) { api.log?.debug?.('刷抖音收尾失败：' + (error?.message || error)) } })
 
     api.tool(({ chat, sessionId }) => {
       const cfg = api.config()
@@ -92,6 +126,7 @@ export default {
     })
 
     // 面板：/douyin/state 只读文件，绝不为了显示状态去开浏览器
+    // （面板页还在插件里，路由沿用无前缀；面板搬进本模块后改成 /ext/douyin/*）
     api.route('/douyin/state', async () => ({ ok: true, ...dy.state() }))
     api.route('/douyin/account', async () => dy.account(true))
     api.route('/douyin/login', async () => dy.loginStep(true))
