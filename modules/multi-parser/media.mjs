@@ -7,6 +7,7 @@ import { createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSy
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { assertPublicUrl } from './net.mjs'
 
 /** 文件名里不能出现的字符换掉，太长就截断。 */
 export function safeName(title, awemeId, ext = '.mp4') {
@@ -36,6 +37,7 @@ export async function downloadVideo(v, opts = {}) {
 
   let lastError = null
   for (const url of urls) {
+    if (!opts.allowPrivate) await assertPublicUrl(url)
     // 换域名重试：抖音的直链会在 play / download 几个域名之间轮换
     const host = new URL(url).host
     const ctl = new AbortController()

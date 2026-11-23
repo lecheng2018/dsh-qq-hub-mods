@@ -5,7 +5,7 @@ import def, { allowedHere } from './index.mjs'
 
 test('multi-parser：清单与入口契约', () => {
   assert.equal(def.id, 'multi-parser')
-  assert.equal(def.version, '1.0.2')
+  assert.equal(def.version, '1.0.3')
   assert.equal(typeof def.setup, 'function')
   assert.ok(def.description)
   assert.equal(def.defaults.enabled, false, '默认关闭')
@@ -114,7 +114,7 @@ test('multi-parser media：downloadVideo 下载时不带 range: bytes=0- 请求�
   try {
     const res = await downloadVideo(
       { awemeId: '123456', title: 'test-video', videoUrls: [`http://127.0.0.1:${port}/video.mp4`] },
-      { dir, referer: 'https://www.douyin.com/' },
+      { dir, referer: 'https://www.douyin.com/', allowPrivate: true },
     )
     assert.ok(capturedHeaders, '服务端应收到请求')
     assert.equal(capturedHeaders.range, undefined, '不应发送 range 请求头（否则触发 CDN 限速挂起）')
@@ -123,4 +123,29 @@ test('multi-parser media：downloadVideo 下载时不带 range: bytes=0- 请求�
   } finally {
     server.close()
   }
+})
+
+test('SSRF 防御：拒绝利用 URL 查询参数或短链伪造平台的内部请求', async () => {
+  const { parseUrl, resolveUrl, matchDomain } = await import('./parser.mjs')
+  const { assertPublicUrl } = await import('./net.mjs')
+
+  // 1. matchDomain 精确匹配，不受 query 参数欺骗
+  assert.equal(matchDomain('http://127.0.0.1:8080/secret?bilibili.com', ['bilibili.com']), false)
+  assert.equal(matchDomain('https://www.bilibili.com/video/BV1xx', ['bilibili.com']), true)
+
+  // 2. assertPublicUrl 拒绝环回与内网
+  await assert.rejects(assertPublicUrl('http://127.0.0.1:8080/'), /内网/)
+  await assert.rejects(assertPublicUrl('http://localhost:3000/'), /本机/)
+  await assert.rejects(assertPublicUrl('http://10.0.0.1/'), /内网/)
+  await assert.rejects(assertPublicUrl('http://192.168.1.1/'), /内网/)
+  await assert.rejects(assertPublicUrl('http://[::1]/'), /内网/)
+  await assert.rejects(assertPublicUrl('http://[::ffff:127.0.0.1]/'), /内网/)
+
+  // 3. resolveUrl fail-closed：针对内网地址返回空串
+  const resolved = await resolveUrl('http://127.0.0.1:8080/test')
+  assert.equal(resolved, '')
+
+  // 4. parseUrl 对伪造内网地址返回 null
+  const parsed = await parseUrl('http://127.0.0.1:8080/evil?target=bilibili.com')
+  assert.equal(parsed, null)
 })

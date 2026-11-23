@@ -1,4 +1,5 @@
 import { downloadVideo, safeName, discardDownloaded } from './media.mjs'
+import { assertPublicUrl } from './net.mjs'
 
 // 媒体投递与卡片渲染引擎：将解析结果安全转换为 QQ 消息段或合并转发卡片
 
@@ -83,6 +84,7 @@ export function formatCardText(result, { withLink = true } = {}) {
 export async function probeVideoSizeMB(url) {
   if (!url) return 0
   try {
+    await assertPublicUrl(url)
     const res = await fetch(url, {
       method: 'HEAD',
       signal: AbortSignal.timeout(5000),
