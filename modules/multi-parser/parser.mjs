@@ -3,26 +3,17 @@
 // 纯 Node.js 实现，零外部依赖。
 // 支持提取短链、重定向追踪、元数据提取（标题、作者、正文、高清图片、无水印视频直链）。
 
-import { lookup } from 'node:dns/promises'
-import { isIP } from 'node:net'
+import { assertPublicUrl } from './net.mjs'
+export { assertPublicUrl }
 
-function isPrivateIp(ip) {
-  if (!ip) return true
-  if (ip.includes(':')) {
-    const s = ip.toLowerCase()
-    return s === '::1' || s.startsWith('fc') || s.startsWith('fd') || s.startsWith('fe80') || s === '::' || s.startsWith('::ffff:127.') || s.startsWith('::ffff:10.') || s.startsWith('::ffff:192.168.')
+export function matchDomain(url, domains) {
+  try {
+    const u = new URL(url)
+    const host = u.hostname.toLowerCase()
+    return domains.some((d) => host === d || host.endsWith('.' + d))
+  } catch {
+    return false
   }
-  const [a, b] = ip.split('.').map(Number)
-  return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224
-}
-
-export async function assertPublicUrl(url) {
-  const u = new URL(url)
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('只允许 http / https')
-  const host = u.hostname.replace(/^\[|\]$/g, '')
-  if (host === 'localhost') throw new Error('不允许访问本机地址')
-  const ips = isIP(host) ? [host] : (await lookup(host, { all: true })).map((x) => x.address)
-  if (!ips.length || ips.some(isPrivateIp)) throw new Error('不允许访问内网地址')
 }
 
 const UA_PC = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
@@ -97,7 +88,11 @@ export function extractUrls(text) {
 export async function resolveUrl(url, maxRedirects = 5) {
   let cur = String(url || '').trim()
   let count = 0
-  try { await assertPublicUrl(cur) } catch { return cur } // 入口就不合法，交由上层各平台解析器自行报错
+  try {
+    await assertPublicUrl(cur)
+  } catch {
+    return ''
+  }
   while (count < maxRedirects) {
     try {
       // 许多短链服务（微博 t.cn、小红书 xhslink、B站 b23.tv）对 HEAD 请求会拒绝或不跳转，优先采用带 Range 的 GET 请求
@@ -109,9 +104,11 @@ export async function resolveUrl(url, maxRedirects = 5) {
       })
       if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
         const next = new URL(res.headers.get('location'), cur).href
-        try { await assertPublicUrl(next) } catch (error) {
-          // 下一跳指进内网：不再跟随。返回当前（公开）地址，让平台解析器拿到非目标域名而自然失败
-          return cur
+        try {
+          await assertPublicUrl(next)
+        } catch (error) {
+          // 下一跳指进内网：不再跟随。fail-closed 返回空，不给内部请求暴露机会
+          return ''
         }
         cur = next
         count++
@@ -133,63 +130,68 @@ export async function resolveUrl(url, maxRedirects = 5) {
  */
 export async function parseUrl(rawUrl, { platforms = {}, cookies = {}, rawText = '' } = {}) {
   let url = await resolveUrl(rawUrl)
+  if (!url) return null
 
   // 知乎外链跳板 link.zhihu.com/?target=... 还原真实目标
-  if (/link\.zhihu\.com/i.test(url)) {
+  if (matchDomain(url, ['link.zhihu.com', 'zhihu.com'])) {
     try {
       const u = new URL(url)
       const target = u.searchParams.get('target')
-      if (target) url = await resolveUrl(decodeURIComponent(target))
+      if (target) {
+        const unescaped = decodeURIComponent(target)
+        const resolved = await resolveUrl(unescaped)
+        if (resolved) url = resolved
+      }
     } catch {}
   }
 
   // 1. 哔哩哔哩 Bilibili (支持 b23.tv / bili2233.cn / bilibili.com)
-  if (platforms.bilibili !== false && /(?:b23\.tv|bili2233\.cn|bilibili\.com)/i.test(url)) {
+  if (platforms.bilibili !== false && matchDomain(url, ['b23.tv', 'bili2233.cn', 'bilibili.com'])) {
     return vetResult(await parseBilibili(url, cookies.bilibili))
   }
 
   // 2. 微博 Weibo (支持 t.cn / weibo.com / weibo.cn / card.weibo.com)
-  if (platforms.weibo !== false && /(?:weibo\.com|weibo\.cn|t\.cn)/i.test(url)) {
+  if (platforms.weibo !== false && matchDomain(url, ['weibo.com', 'weibo.cn', 't.cn', 'card.weibo.com'])) {
     return vetResult(await parseWeibo(url, cookies.weibo, rawText))
   }
 
   // 3. 小红书 RedBook (支持 xhslink.com / xhslink.cn / xiaohongshu.com / xiaohongshu.cn)
-  if (platforms.redbook !== false && /(?:xhslink\.com|xhslink\.cn|xiaohongshu\.com|xiaohongshu\.cn)/i.test(url)) {
+  if (platforms.redbook !== false && matchDomain(url, ['xhslink.com', 'xhslink.cn', 'xiaohongshu.com', 'xiaohongshu.cn'])) {
     return vetResult(await parseRedBook(url, cookies.redbook, rawText))
   }
 
   // 4. 知乎 Zhihu (支持 zhihu.com / zhuanlan.zhihu.com)
-  if (platforms.zhihu !== false && /zhihu\.com/i.test(url)) {
+  if (platforms.zhihu !== false && matchDomain(url, ['zhihu.com', 'zhuanlan.zhihu.com'])) {
     return vetResult(await parseZhihu(url, cookies.zhihu))
   }
 
   // 5. 微信公众号 Wechat
-  if (platforms.wechat !== false && /mp\.weixin\.qq\.com/i.test(url)) {
+  if (platforms.wechat !== false && matchDomain(url, ['mp.weixin.qq.com'])) {
     return vetResult(await parseWechat(url))
   }
 
   // 6. 百度贴吧 Tieba (支持 tieba.baidu.com / tb.cn)
-  if (platforms.tieba !== false && /(?:tieba\.baidu\.com|tb\.cn)/i.test(url)) {
+  if (platforms.tieba !== false && matchDomain(url, ['tieba.baidu.com', 'tb.cn'])) {
     return vetResult(await parseTieba(url, cookies.tieba))
   }
 
   // 7. 番茄小说 Fanqie (支持 changdunovel.com / fanqienovel.com)
-  if (platforms.fanqie !== false && /(?:changdunovel\.com|fanqienovel\.com)/i.test(url)) {
+  if (platforms.fanqie !== false && matchDomain(url, ['changdunovel.com', 'fanqienovel.com'])) {
     return vetResult(await parseFanqie(url))
   }
 
   // 8. GitHub
-  if (platforms.github !== false && /github\.com/i.test(url)) {
+  if (platforms.github !== false && matchDomain(url, ['github.com'])) {
     return vetResult(await parseGithub(url))
   }
 
   // 9. 抖音 Douyin (支持 v.douyin.com / jx.douyin.com / douyin.com / iesdouyin.com)
-  if (platforms.douyin !== false && /(?:v\.douyin\.com|jx\.douyin\.com|douyin\.com|iesdouyin\.com)/i.test(url)) {
+  if (platforms.douyin !== false && matchDomain(url, ['v.douyin.com', 'jx.douyin.com', 'douyin.com', 'iesdouyin.com'])) {
     return vetResult(await parseDouyin(url, cookies.douyin, rawText))
   }
 
   // 10. 小黑盒 Heybox (支持 xiaoheihe.cn / heybox.com.cn)
-  if (platforms.xiaoheihe !== false && /(?:xiaoheihe\.cn|heybox\.com\.cn)/i.test(url)) {
+  if (platforms.xiaoheihe !== false && matchDomain(url, ['xiaoheihe.cn', 'heybox.com.cn'])) {
     return vetResult(await parseHeybox(url, cookies.xiaoheihe))
   }
 
@@ -331,6 +333,7 @@ async function parseWeibo(url, cookie = '', rawText = '') {
 
 async function parseRedBook(url, cookie = '', rawText = '') {
   try {
+    await assertPublicUrl(url)
     const headers = { 'User-Agent': UA_MOBILE, Referer: 'https://www.xiaohongshu.com/' }
     if (cookie) headers.Cookie = cookie
 
@@ -392,6 +395,7 @@ async function parseRedBook(url, cookie = '', rawText = '') {
 
 async function parseZhihu(url, cookie = '') {
   try {
+    await assertPublicUrl(url)
     const headers = { 'User-Agent': UA_PC, Referer: 'https://www.zhihu.com/' }
     if (cookie) headers.Cookie = cookie
 
@@ -427,6 +431,7 @@ async function parseZhihu(url, cookie = '') {
 
 async function parseWechat(url) {
   try {
+    await assertPublicUrl(url)
     const res = await fetch(url, {
       headers: { 'User-Agent': UA_MOBILE },
       signal: AbortSignal.timeout(8000),
@@ -499,6 +504,7 @@ async function parseTieba(url, cookie = '') {
 
 async function parseFanqie(url) {
   try {
+    await assertPublicUrl(url)
     const res = await fetch(url, {
       headers: { 'User-Agent': UA_MOBILE },
       signal: AbortSignal.timeout(8000),
