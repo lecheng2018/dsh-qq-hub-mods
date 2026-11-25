@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { isBotSender, sanitizeHumanMessage } from './filter.mjs'
 
 /**
  * 扫描本地 chatlog 目录中所有群聊及消息统计
@@ -13,7 +14,7 @@ export function scanHistoryGroups(chatLogDir) {
     return []
   }
 
-  const groupStats = new Map() // gid -> { groupId, totalCount, lastAt }
+  const groupStats = new Map()
 
   for (const f of files) {
     try {
@@ -39,9 +40,9 @@ export function scanHistoryGroups(chatLogDir) {
 }
 
 /**
- * 从本地 chatlog 提取指定群的历史发言样本
+ * 从本地 chatlog 提取指定群的历史有效短句样本（严格排除 Bot / Q群管家 / 广告链接 / 长文）
  */
-export function sampleGroupHistory(chatLogDir, groupId, { days = 3, sampleSize = 35, botQQ = '' } = {}) {
+export function sampleGroupHistory(chatLogDir, groupId, { days = 3, sampleSize = 35, botQQ = '', fishGuard = null } = {}) {
   if (!existsSync(chatLogDir) || !groupId) return []
   let files = []
   try {
@@ -70,30 +71,29 @@ export function sampleGroupHistory(chatLogDir, groupId, { days = 3, sampleSize =
     } catch {}
   }
 
-  // 按时间升序排序
   rawEntries.sort((a, b) => (a.t || 0) - (b.t || 0))
 
-  // 过滤有效发言：排除 Bot、排除指令、排除纯系统通知或表情包占位符
-  const botUids = new Set([String(botQQ || '').trim()].filter(Boolean))
   const validLines = []
+  const recentTexts = new Set()
 
   for (const item of rawEntries) {
-    const text = String(item.text || '').trim()
     const uid = String(item.uid || '').trim()
     const who = String(item.who || '').trim()
 
-    // 过滤 Bot
-    if (botUids.has(uid) || who === '大肥鱼') continue
-    // 过滤空文本、指令、超短无效符号
-    if (!text || text.startsWith('/') || text.length < 2) continue
-    // 过滤纯图片/动画表情占位符
-    if (/^\[(图片|动画表情|分享卡片|语音|视频)\]$/.test(text)) continue
+    if (isBotSender({ userId: uid, nickname: who, botQQ, fishGuard })) continue
+
+    const clean = sanitizeHumanMessage(item.text)
+    if (!clean) continue
+
+    const key = `${uid}:${clean}`
+    if (recentTexts.has(key)) continue
+    recentTexts.add(key)
 
     validLines.push({
       name: who || '群友',
       userId: uid,
       isBot: false,
-      text,
+      text: clean,
       t: item.t,
     })
   }
@@ -102,8 +102,6 @@ export function sampleGroupHistory(chatLogDir, groupId, { days = 3, sampleSize =
     return validLines
   }
 
-  // 如果有效消息较多，做步长均匀抽样，保留代表性上下文片段
-  // 选取最近的若干个活跃对话簇
   const step = validLines.length / sampleSize
   const sampled = []
   for (let i = 0; i < sampleSize; i++) {
