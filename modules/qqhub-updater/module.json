@@ -1,0 +1,27 @@
+{
+  "$schema": "../../schemas/module.schema.json",
+  "id": "qqhub-updater",
+  "name": "版本更新",
+  "version": "1.0.0",
+  "description": "检查并自动更新 QQ Hub 本体：支持切换稳定版 / Beta 测试版通道，展示当前通道更新日志与可折叠的历史更新日志，并经 DSH 插件管理器执行升级与失败回滚。",
+  "category": "system",
+  "tags": [
+    "update",
+    "updater",
+    "changelog",
+    "beta",
+    "system"
+  ],
+  "author": "lecheng2018",
+  "license": "MIT",
+  "api": 1,
+  "minPluginVersion": "1.4.3",
+  "requires": [],
+  "capabilities": [
+    "network",
+    "storage",
+    "schedule",
+    "panel",
+    "command"
+  ]
+}
