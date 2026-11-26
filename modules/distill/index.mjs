@@ -1,45 +1,63 @@
 /** @type {import('../qq-hub').QQHubModule} */
 import { resolve } from 'node:path'
+import { isBotSender, sanitizeHumanMessage } from './filter.mjs'
 import { buildDistillPrompt } from './prompt.mjs'
-import { verifyAndCleanRules, safeParseJsonArray } from './verifier.mjs'
+import { verifyAndCleanRules, safeParseJsonArray, normalizeStyle } from './verifier.mjs'
 import { createDistillStore } from './store.mjs'
 import { scanHistoryGroups, sampleGroupHistory } from './history-miner.mjs'
 
+const RECENT_CACHE_MAX = 4 // 只看最近 4 条干净群友短句
+const RULE_REPEAT_COOLDOWN_MS = 10 * 60_000 // 单条口癖 10 分钟内不重复注入
+
+function formatHintPrompt(matched) {
+  if (!matched || !matched.length) return ''
+  const phrases = matched
+    .map(r => normalizeStyle(r.style))
+    .filter(Boolean)
+    .map(s => `「${s}」`)
+  if (!phrases.length) return ''
+  return `（顺嘴参考：群里聊到这类事偶尔会随口带一句${phrases.join('或')}，顺嘴就用，不顺嘴直接忽略，千万别硬套。）`
+}
+
 export default {
   id: 'distill',
-  name: '群友蒸馏（测试版）',
-  version: '1.0.0-beta.6',
+  name: '群友蒸馏',
+  version: '2.0.0',
   api: 1,
-  description: '【测试版】移植 MaiBot 语感提炼机制，高信噪比提取群友接话习惯与口癖，设置频次门槛，绝不强行加戏。',
+  description: '按群独立、高信噪比提炼群友短口癖与接话节奏：严格隔离机器人/广告/具体台词，带冷却、概率门禁与复读防线，宁缺毋滥。',
   panel: 'panel.js',
   tab: 'distill',
   defaults: {
     enabled: true,
-    globalSharing: true,    // 全局共享语感底座（各群提炼互通汇聚，新群免冷启动）
-    batchSize: 15,
-    maxCapacity: 100,
-    minPromotionCount: 3,   // 准入门槛：至少出现3次或锁定的规则才允许实际生效
-    maxInjectedRules: 1,    // 命中时最多参考1条，杜绝注意力过载与刻意造句
+    batchSize: 35,               // 攒够 35 条干净群友短句再提炼，省 token 且信噪比高
+    minDistillIntervalSec: 180,  // 单群最少间隔 3 分钟才允许跑一次提炼
+    maxCapacity: 60,             // 每群精简规则上限，宁缺毋滥
+    minPromotionCount: 4,        // 至少跨批次出现 4 次（或手动锁定）才生效
+    maxInjectedRules: 1,         // 每次最多注入 1 条
+    injectChance: 0.35,          // 即使命中也只按 35% 概率顺嘴点缀
+    injectCooldownSec: 180,      // 同群 3 分钟内最多注入 1 次
     activeGroups: '',
-    modelOverride: '',      // 蒸馏专用模型 provider::模型名；留空跟随主模型
+    modelOverride: '',           // 蒸馏专用模型 provider::模型名；留空跟随主模型
   },
   settings: [
     { key: 'enabled', label: '启用群友蒸馏', type: 'switch' },
-    { key: 'globalSharing', label: '全局共享语感底座（各群提炼互通汇聚，新群免冷启动）', type: 'switch' },
-    { key: 'minPromotionCount', label: '正式生效门槛（群友使用频次 ≥）', type: 'number', min: 2, max: 10 },
-    { key: 'batchSize', label: '实时分析触发阈值（条）', type: 'number', min: 10, max: 50 },
-    { key: 'maxCapacity', label: '每群规则库上限', type: 'number', min: 30, max: 500 },
-    { key: 'maxInjectedRules', label: '单次回复最多参考规则数', type: 'number', min: 1, max: 3 },
+    { key: 'minPromotionCount', label: '正式生效门槛（群友使用频次 ≥）', type: 'number', min: 2, max: 15 },
+    { key: 'batchSize', label: '实时提炼样本阈值（条）', type: 'number', min: 15, max: 100 },
+    { key: 'minDistillIntervalSec', label: '单群提炼最小间隔（秒）', type: 'number', min: 30, max: 3600 },
+    { key: 'maxCapacity', label: '每群规则库上限', type: 'number', min: 20, max: 200 },
+    { key: 'maxInjectedRules', label: '单次回复最多参考规则数', type: 'number', min: 1, max: 2 },
+    { key: 'injectChance', label: '命中后注入概率（0~1）', type: 'number', min: 0.05, max: 1, step: 0.05 },
+    { key: 'injectCooldownSec', label: '同群注入冷却（秒）', type: 'number', min: 0, max: 1800 },
     { key: 'activeGroups', label: '指定生效群号（逗号分隔，留空全生效）', type: 'text' },
-    // 面板里是下拉选模型，这里留一个手填入口：面板没加载出来时也能配置。
-    // 写法 provider::模型名（也接受 provider/模型名），留空 = 跟随主模型。
-    { key: 'modelOverride', label: '蒸馏专用模型（provider::模型名，留空跟随主模型）', type: 'text', placeholder: '例如 openai::gpt-5-mini' },
   ],
 
   setup(api) {
     const store = createDistillStore(api.dataDir())
-    const buffers = new Map() // groupId -> [] 待提炼消息缓存
-    const recentChatCache = new Map() // groupId -> [] 最近5条发言（用于实时上下文情境匹配）
+    const buffers = new Map()         // groupId -> [] 待提炼干净人类短句
+    const recentChatCache = new Map() // groupId -> [] 最近 4 条干净群友短句
+    const lastDistillAt = new Map()   // groupId -> 上次提炼时间戳
+    const lastInjectAt = new Map()    // groupId -> 上次注入时间戳
+    const distilling = new Set()      // groupId 正在提炼锁，防并发重入
 
     const storeLib = api.lib?.('core/store.js')
     const chatLogDir = storeLib?.dataDir ? storeLib.dataDir('chatlog') : resolve(api.dataDir(), '../../chatlog')
@@ -54,21 +72,14 @@ export default {
     }
 
     // ---------- 蒸馏专用模型 ----------
-    // 提炼和群聊回复是两种负载：提炼要吞一长串流水、逐条吐 JSON（吃上下文、不吃灵性），
-    // 群聊回复要自然口语（吃灵性、不需要大窗口）。共用一个模型只能互相将就，
-    // 所以给蒸馏单独开一个可选项；留空就沿用主模型，行为和以前完全一致。
     function readModelOverride() {
       const raw = String(api.settings().modelOverride || '').trim()
       if (!raw) return null
-      // provider::模型名 / provider/模型名 都认。模型 id 自己可能带斜杠
-      //（deepseek-ai/DeepSeek-V3 这类），所以只按第一个分隔符切，剩下的整体当模型名。
       const m = /^([^:/|\s]+)\s*(?:::|[/|])\s*(.+)$/.exec(raw)
       if (!m) return { invalid: raw }
       return { provider: m[1], model: m[2].trim() }
     }
 
-    // 指定模型挂了（下架 / 改了 id / 额度用完）不能把整条提炼链路拖哑：
-    // 记一条 warn，这一次退回主模型，规则照常落库。
     async function askDistill(opts) {
       const sel = readModelOverride()
       if (sel?.invalid) {
@@ -91,11 +102,11 @@ export default {
         list = []
         recentChatCache.set(groupId, list)
       }
+      if (list.length && list[list.length - 1].text === text) return
       list.push({ who, text, t: Date.now() })
-      if (list.length > 8) list.shift()
+      while (list.length > RECENT_CACHE_MAX) list.shift()
     }
 
-    // 监听实时群消息
     api.on('message', async (msg) => {
       const isGroup = msg?.kind === 'group' || Boolean(msg?.groupId) || (msg?.chatId && String(msg.chatId).startsWith('group:'))
       if (!isGroup) return false
@@ -103,18 +114,19 @@ export default {
       const gid = String(msg.groupId || (msg.chatId ? String(msg.chatId).replace(/^group:/, '') : ''))
       if (!gid || !isGroupActive(gid)) return false
 
-      const text = String(msg.text || '').trim()
-      if (!text || text.startsWith('/')) return false
+      const rootCfg = api.config?.() || {}
+      const uid = String(msg.userId || '').trim()
+      const who = String(msg.nickname || msg.sender?.card || msg.sender?.nickname || '').trim()
 
-      const who = String(msg.nickname || msg.sender?.card || msg.sender?.nickname || '群友')
-      const botQQ = String(api.config?.()?.botQQ || '')
-      const isBot = Boolean(botQQ && String(msg.userId) === botQQ)
+      // 自身 Bot、Q群管家、fishGuard 机器人一律不进缓存也不进蒸馏池
+      if (isBotSender({ userId: uid, nickname: who, botQQ: rootCfg.botQQ, fishGuard: rootCfg.group?.fishGuard })) {
+        return false
+      }
 
-      // 记录到近期滑动窗口，供精确情境匹配
-      recordRecentChat(gid, who, text)
+      const clean = sanitizeHumanMessage(msg.text)
+      if (!clean) return false
 
-      // 铁律：Bot 发言绝不入蒸馏池
-      if (isBot) return false
+      recordRecentChat(gid, who || '群友', clean)
 
       let buf = buffers.get(gid)
       if (!buf) {
@@ -122,19 +134,20 @@ export default {
         buffers.set(gid, buf)
       }
 
-      buf.push({
-        name: who,
-        userId: String(msg.userId || ''),
-        isBot: false,
-        text,
-        t: Date.now(),
-      })
+      const prev = buf[buf.length - 1]
+      if (!prev || prev.userId !== uid || prev.text !== clean) {
+        buf.push({ name: who || '群友', userId: uid, isBot: false, text: clean, t: Date.now() })
+      }
 
-      api.log.debug(`[群友蒸馏] 群 ${gid} 实时收到一条候选消息，当前缓存: ${buf.length}`)
+      const settings = api.settings()
+      const threshold = Math.max(15, Number(settings.batchSize) || 35)
+      const minGapMs = Math.max(30, Number(settings.minDistillIntervalSec) || 180) * 1000
+      const now = Date.now()
 
-      const threshold = Number(api.settings().batchSize) || 15
-      if (buf.length >= threshold) {
-        const lines = buf.splice(0, buf.length)
+      if (buf.length >= threshold && !distilling.has(gid) && now - (lastDistillAt.get(gid) || 0) >= minGapMs) {
+        const lines = buf.splice(0, threshold)
+        if (buf.length > threshold * 2) buf.splice(0, buf.length - threshold)
+        lastDistillAt.set(gid, now)
         api.later(200, () => runDistillLines(gid, lines))
       }
 
@@ -142,84 +155,76 @@ export default {
     })
 
     async function runDistillLines(groupId, lines) {
+      if (distilling.has(groupId)) return 0
+      distilling.add(groupId)
       try {
         const { system, text } = buildDistillPrompt(lines)
-        // 1500 太紧：一次喂 15 条消息、要模型逐条吐 JSON，经常没写完就被截停（真机 2026-11-21：
-        // 当天 21 次「未解析出有效规则」，回包里其实已有完整对象）。放宽到 3000 只是减少截断，
-        // 真正兜底靠 verifier 的 salvageTruncatedObjects —— 两处都要有，不能只靠其中一边。
-        const out = await askDistill({ system, text, maxTokens: 3000, temperature: 0.3 })
+        const out = await askDistill({ system, text, maxTokens: 1200, temperature: 0.2 })
         const rawRules = safeParseJsonArray(out)
-
-        if (!rawRules || !rawRules.length) {
-          api.log.info(`[群友蒸馏] 群 ${groupId} 未解析出有效规则，回包片段: ${String(out).replace(/\s+/g, ' ').slice(0, 120)}`)
+        if (!rawRules.length) {
+          api.log.debug(`[群友蒸馏] 群 ${groupId} 本批 ${lines.length} 条未提炼出高信噪比口癖`)
           return 0
         }
 
-        const cleaned = verifyAndCleanRules(rawRules, lines)
-
+        const cleaned = verifyAndCleanRules(rawRules, lines, { maxPerBatch: 3 })
         if (cleaned.length > 0) {
-          const cap = api.settings().maxCapacity || 100
-          const shareGlobal = api.settings().globalSharing !== false
-          const targetScope = shareGlobal ? 'global' : groupId
-          store.addRules(targetScope, cleaned, cap, { originGroup: groupId })
-          api.log.info(`[群友蒸馏] 从群 ${groupId} 提炼合并 ${cleaned.length} 条口癖规则${shareGlobal ? '至全局公共底座' : '至专属群库'}`)
+          const cap = Math.max(20, Number(api.settings().maxCapacity) || 60)
+          store.addRules(groupId, cleaned, cap)
+          api.log.info(`[群友蒸馏] 群 ${groupId} 提炼入库 ${cleaned.length} 条短口癖（${cleaned.map(r => r.style).join('、')}）`)
         }
         return cleaned.length
       } catch (err) {
         api.log.warn(`[群友蒸馏] 群 ${groupId} 提炼异常:`, err.message)
         return 0
+      } finally {
+        distilling.delete(groupId)
       }
     }
 
-    function cleanStyleText(style) {
-      if (!style) return ''
-      return String(style)
-        .replace(/^(?:调侃)?(?:使用|用|说|回复|直接抛出|短句直说|直给短句)\s*/g, '')
-        .replace(/(?:的反转句式|的超短句|句式|短句)$/g, '')
-        .trim()
-    }
-
-    // 上下文注入：严格遵守门槛与精准命中，杜绝强行句式与小学生造句
+    // 上下文注入：按群独立 + 高精度匹配 + 群冷却 + 概率节流 + 单条复读冷却 + 轻量非强制措辞
     api.context(({ chat }) => {
       if (!chat || chat.kind !== 'group' || !isGroupActive(chat.groupId)) return ''
 
-      const minCount = Number(api.settings().minPromotionCount) || 3
-      const includeGlobal = api.settings().globalSharing !== false
-      const activeRules = store.getActiveRules(chat.groupId, minCount, { includeGlobal })
+      const settings = api.settings()
+      const now = Date.now()
+      const cooldownMs = Math.max(0, Number(settings.injectCooldownSec ?? 180)) * 1000
+      if (cooldownMs > 0 && now - (lastInjectAt.get(chat.groupId) || 0) < cooldownMs) return ''
+
+      const minCount = Math.max(2, Number(settings.minPromotionCount) || 4)
+      const activeRules = store.getActiveRules(chat.groupId, minCount)
       if (!activeRules.length) return ''
 
       const recentLines = recentChatCache.get(chat.groupId) || []
-      const recentText = recentLines.map(m => m.text).join(' ')
+      const freshLines = recentLines.filter(m => now - (m.t || 0) < 5 * 60_000)
+      const recentText = freshLines.map(m => m.text).join(' ')
       if (!recentText) return ''
 
-      // 默认单次最多参考 1 条，避免强行给模型套多个紧箍咒
-      const maxRules = Math.max(1, Math.min(Number(api.settings().maxInjectedRules) || 1, 2))
-      const matched = store.matchRelevantRules(activeRules, recentText, maxRules)
+      const maxRules = Math.max(1, Math.min(Number(settings.maxInjectedRules) || 1, 2))
+      const matched = store.matchRelevantRules(activeRules, recentText, maxRules, {
+        now,
+        ruleCooldownMs: RULE_REPEAT_COOLDOWN_MS,
+      })
+      if (!matched.length) return ''
 
-      // 核心原则：绝不强行加戏！没有明确命中具体情境时，保持 Bot 自在松弛，一条都不注入
-      if (!matched.length) {
-        return ''
-      }
+      const rawChance = Number(settings.injectChance)
+      const chance = Number.isFinite(rawChance) && rawChance >= 0 && rawChance <= 1 ? rawChance : 0.35
+      if (Math.random() >= chance) return ''
 
-      const hints = matched.map(r => {
-        const sit = r.situation.replace(/^(?:当|在|聊到|遇到|说到)?/g, '').replace(/(?:时|的时候)$/g, '')
-        const tone = cleanStyleText(r.style)
-        return `聊到「${sit}」时群友常带的语调：${tone}`
-      }).join('；')
+      const prompt = formatHintPrompt(matched)
+      if (!prompt) return ''
 
+      lastInjectAt.set(chat.groupId, now)
       try {
         store.recordRuleUsage(chat.groupId, matched.map(r => r.id))
-        api.log.info(`[群友蒸馏] 为群 ${chat.groupId} 命中语感参考: ${hints}`)
+        api.log.info(`[群友蒸馏] 群 ${chat.groupId} 顺嘴参考: ${matched.map(r => `${r.situation}→${r.style}`).join('；')}`)
       } catch {}
 
-      return `（群内氛围小贴士：${hints}。仅供感受说话节奏与松弛感，按你自己的性格自然说话即可，严禁生硬套用或背诵模板。）`
+      return prompt
     })
 
-    // 面板后端路由
+    // ---------------- 面板后端路由 ----------------
     const readBody = async (req) => (api.core?.http?.body ? api.core.http.body(req) : (req?.body || req || {}))
 
-    // 可选的蒸馏模型清单：面板下拉直接用宿主给的模型目录，不在模块里硬编码模型名
-    //（模型会下架、会改名，硬编码迟早变成一堆选不了的幽灵选项）。
     api.route('/models', async () => {
       const sel = readModelOverride()
       let list = []
@@ -229,7 +234,6 @@ export default {
           .filter(m => m && m.provider && m.model)
           .map(m => ({
             value: `${m.provider}::${m.model}`,
-            // 同名模型可能挂在多个 provider 下，标签带上 provider 才分得清
             label: `${m.name || m.model}（${m.provider}）`,
           }))
       } catch (error) {
@@ -237,8 +241,13 @@ export default {
       }
       let defaultModel = ''
       try {
-        const d = api.core?.defaultModel?.()
-        if (d && d.provider && d.model) defaultModel = `${d.provider}::${d.model}`
+        const cfgModel = api.config?.()?.model
+        if (cfgModel && cfgModel.provider && cfgModel.model) {
+          defaultModel = `${cfgModel.provider}::${cfgModel.model}`
+        } else {
+          const d = api.core?.defaultModel?.()
+          if (d && d.provider && d.model) defaultModel = `${d.provider}::${d.model}`
+        }
       } catch {}
       return {
         ok: true,
@@ -246,12 +255,10 @@ export default {
         modelOverride: api.settings().modelOverride || '',
         invalid: sel?.invalid || '',
         defaultModel,
-        // 配置里写的是哪个模型 —— 面板据此判断它是否还在目录里（下架时照样显示出来，别静默丢配置）
         active: sel && !sel.invalid ? `${sel.provider}::${sel.model}` : '',
       }
     })
 
-    // 面板下拉保存（走模块设置，和设置页那个手填框是同一个键）
     api.route('/save-settings', async (req) => {
       const body = await readBody(req)
       if (!body || !Object.prototype.hasOwnProperty.call(body, 'modelOverride')) {
@@ -268,38 +275,17 @@ export default {
 
     api.route('/status', async () => {
       const storeGroups = new Set(store.getAllGroupIds())
-      for (const gid of buffers.keys()) {
-        storeGroups.add(gid)
-      }
+      for (const gid of buffers.keys()) storeGroups.add(gid)
       const historyStats = scanHistoryGroups(chatLogDir)
-      for (const h of historyStats) {
-        storeGroups.add(h.groupId)
-      }
+      for (const h of historyStats) storeGroups.add(h.groupId)
 
-      const minCount = Number(api.settings().minPromotionCount) || 3
-      const shareGlobal = api.settings().globalSharing !== false
+      const settings = api.settings()
+      const minCount = Math.max(2, Number(settings.minPromotionCount) || 4)
 
-      const globalRaw = store.getRawRules('global')
-      const globalActive = store.getActiveRules('global', minCount, { includeGlobal: false })
-      const globalCandidates = store.getCandidateRules('global', minCount, { includeGlobal: false })
-      const globalItem = {
-        groupId: 'global',
-        groupName: '🌐 全局共享语感底座 (所有群继承)',
-        isGlobal: true,
-        isLiveActive: shareGlobal,
-        totalCount: globalRaw.length,
-        activeCount: globalActive.length,
-        candidateCount: globalCandidates.length,
-        lockedCount: globalRaw.filter(r => r.locked).length,
-        bufferCount: 0,
-        historyCount: 0,
-      }
-
-      const regularGroupIds = Array.from(storeGroups).filter(gid => gid !== 'global')
-      const list = await Promise.all(regularGroupIds.map(async (gid) => {
-        const raw = store.getRawRules(gid, { includeGlobal: false })
-        const active = store.getActiveRules(gid, minCount, { includeGlobal: false })
-        const candidates = store.getCandidateRules(gid, minCount, { includeGlobal: false })
+      const list = await Promise.all(Array.from(storeGroups).map(async (gid) => {
+        const raw = store.getRawRules(gid)
+        const active = store.getActiveRules(gid, minCount)
+        const candidates = store.getCandidateRules(gid, minCount)
         const buf = buffers.get(gid) || []
         const hStat = historyStats.find(h => h.groupId === gid)
         let groupName = gid
@@ -310,10 +296,8 @@ export default {
           groupId: gid,
           groupName,
           isLiveActive: isGroupActive(gid),
-          isGlobal: false,
           totalCount: raw.length,
           activeCount: active.length,
-          inheritedCount: shareGlobal ? globalActive.length : 0,
           candidateCount: candidates.length,
           lockedCount: raw.filter(r => r.locked).length,
           bufferCount: buf.length,
@@ -325,25 +309,19 @@ export default {
         if (a.isLiveActive !== b.isLiveActive) return a.isLiveActive ? -1 : 1
         return (b.activeCount * 1000 + b.historyCount) - (a.activeCount * 1000 + a.historyCount)
       })
-      return { ok: true, list: [globalItem, ...list], settings: api.settings() }
+      return { ok: true, list, settings }
     })
 
     api.route('/rules', async (req) => {
       const q = api.core?.http?.query ? api.core.http.query(req) : {}
       const gid = q.groupId || new URL(req.url, 'http://localhost').searchParams.get('groupId')
       if (!gid) return { ok: false, message: '缺少 groupId' }
-      const minCount = Number(api.settings().minPromotionCount) || 3
-      const shareGlobal = api.settings().globalSharing !== false
-      const isGlobal = gid === 'global'
-      const includeGlobal = !isGlobal && shareGlobal
-
-      const activeRules = store.getActiveRules(gid, minCount, { includeGlobal })
-      const candidateRules = store.getCandidateRules(gid, minCount, { includeGlobal })
+      const minCount = Math.max(2, Number(api.settings().minPromotionCount) || 4)
+      const activeRules = store.getActiveRules(gid, minCount)
+      const candidateRules = store.getCandidateRules(gid, minCount)
       return {
         ok: true,
         groupId: gid,
-        isGlobal,
-        globalSharing: shareGlobal,
         activeRules,
         candidateRules,
         minCount,
@@ -351,148 +329,129 @@ export default {
       }
     })
 
-    api.route('/scope-rule', async (req) => {
-      const body = await readBody(req)
-      const { fromScope, toScope, ruleId } = body || {}
-      if (!fromScope || !toScope || !ruleId) return { ok: false, message: '参数不足' }
-      const success = store.scopeRule(fromScope, toScope, ruleId)
-      return { ok: success, message: success ? '规则作用域已调整' : '规则流转失败' }
-    })
-
     api.route('/promote', async (req) => {
       const body = await readBody(req)
-      const scope = body?.scope || body?.groupId
+      const gid = body?.groupId || body?.scope
       const { ruleId } = body || {}
-      if (!scope || !ruleId) return { ok: false, message: '参数不足' }
-      const minCount = Number(api.settings().minPromotionCount) || 3
-      const success = store.promoteCandidate(scope, ruleId, minCount)
+      if (!gid || !ruleId) return { ok: false, message: '参数不足' }
+      const minCount = Math.max(2, Number(api.settings().minPromotionCount) || 4)
+      const success = store.promoteCandidate(gid, ruleId, minCount)
       return { ok: success }
     })
 
     api.route('/prune-noise', async (req) => {
       const body = await readBody(req)
-      const scope = body?.scope || body?.groupId
-      if (!scope) return { ok: false, message: '缺少 groupId 或 scope' }
-      const pruned = store.pruneNoise(scope, 2)
-      return { ok: true, pruned, message: `已清理 ${pruned} 条单次出现的偶发噪点` }
+      const gid = body?.groupId || body?.scope
+      if (!gid) return { ok: false, message: '缺少 groupId' }
+      const pruned = store.pruneNoise(gid, 2)
+      return { ok: true, pruned, message: `已清理 ${pruned} 条低频噪点与脏规则` }
     })
 
     api.route('/consolidate', async (req) => {
       const body = await readBody(req)
-      const scope = body?.scope || body?.groupId
-      if (!scope) return { ok: false, message: '缺少 groupId 或 scope' }
-      const reduced = store.consolidate(scope)
+      const gid = body?.groupId || body?.scope
+      if (!gid) return { ok: false, message: '缺少 groupId' }
+      const reduced = store.consolidate(gid)
       return { ok: true, reduced, message: `近义规则聚类完成，精简了 ${reduced} 条重复规则` }
     })
 
     api.route('/toggle-lock', async (req) => {
       const body = await readBody(req)
-      const scope = body?.scope || body?.groupId
+      const gid = body?.groupId || body?.scope
       const { ruleId } = body || {}
-      if (!scope || !ruleId) return { ok: false, message: '参数不足' }
-      const locked = store.toggleLock(scope, ruleId)
+      if (!gid || !ruleId) return { ok: false, message: '参数不足' }
+      const locked = store.toggleLock(gid, ruleId)
       return { ok: true, locked }
     })
 
     api.route('/delete-rule', async (req) => {
       const body = await readBody(req)
-      const scope = body?.scope || body?.groupId
+      const gid = body?.groupId || body?.scope
       const { ruleId } = body || {}
-      if (!scope || !ruleId) return { ok: false, message: '参数不足' }
-      store.deleteRule(scope, ruleId)
+      if (!gid || !ruleId) return { ok: false, message: '参数不足' }
+      store.deleteRule(gid, ruleId)
       return { ok: true }
     })
 
     api.route('/add-manual', async (req) => {
       const body = await readBody(req)
-      const scope = body?.scope || body?.groupId
+      const gid = body?.groupId || body?.scope
       const { situation, style } = body || {}
-      if (!scope || !situation || !style) return { ok: false, message: '情境和风格均不能为空' }
-      store.addManualRule(scope, { situation, style })
+      if (!gid || !situation || !style) return { ok: false, message: '情境和风格均不能为空' }
+      store.addManualRule(gid, { situation, style })
       return { ok: true }
     })
 
     api.route('/clear-all', async (req) => {
       const body = await readBody(req)
-      const scope = body?.scope || body?.groupId
-      if (!scope) return { ok: false, message: '缺少 groupId 或 scope' }
-      store.clearRules(scope)
+      const gid = body?.groupId || body?.scope
+      if (!gid) return { ok: false, message: '缺少 groupId' }
+      store.clearRules(gid)
       return { ok: true }
     })
 
     api.route('/trigger-now', async (req) => {
       const body = await readBody(req)
-      const gid = body?.scope || body?.groupId
+      const gid = body?.groupId || body?.scope
       if (!gid) return { ok: false, message: '缺少 groupId' }
-      if (gid === 'global') {
-        return { ok: false, message: '全局公共库由各群实时提炼自动汇聚，请选择具体群聊来触发缓存提炼' }
-      }
       const buf = buffers.get(gid) || []
-      if (buf.length < 2) {
-        return { ok: false, message: `当前实时消息缓存仅 ${buf.length} 条，不足以提炼（建议等待群友发言或使用上方「从历史聊天提炼」）` }
+      if (buf.length < 3) {
+        return { ok: false, message: `当前实时短句缓存仅 ${buf.length} 条，不足以提炼（建议等待群友发言或使用历史提炼）` }
       }
       const lines = buf.splice(0, buf.length)
       const count = await runDistillLines(gid, lines)
-      return { ok: true, message: `已提炼 ${lines.length} 条实时发言，获得 ${count} 条新规则` }
+      return { ok: true, message: `已分析 ${lines.length} 条短句，提炼出 ${count} 条干净口癖` }
     })
 
     api.route('/distill-history', async (req) => {
       const body = await readBody(req)
-      const gid = body?.scope || body?.groupId
-      const { days = 3, sampleSize = 35 } = body || {}
+      const gid = body?.groupId || body?.scope
+      const { days = 3, sampleSize = 40 } = body || {}
       if (!gid) return { ok: false, message: '缺少 groupId' }
-      if (gid === 'global') {
-        return { ok: false, message: '全局公共底座无需直接抽样，请选择具体群聊，提炼时将自动汇入全局底座' }
-      }
 
-      const botQQ = api.config?.()?.botQQ || ''
+      const rootCfg = api.config?.() || {}
       const lines = sampleGroupHistory(chatLogDir, gid, {
         days: Number(days) || 3,
-        sampleSize: Math.min(60, Math.max(10, Number(sampleSize) || 35)),
-        botQQ,
+        sampleSize: Math.min(60, Math.max(10, Number(sampleSize) || 40)),
+        botQQ: rootCfg.botQQ || '',
+        fishGuard: rootCfg.group?.fishGuard || null,
       })
 
       if (lines.length < 5) {
-        return { ok: false, message: `该群在指定时段内的有效群友发言仅 ${lines.length} 条，不足以提炼（至少需 5 条）` }
+        return { ok: false, message: `该群在指定时段内的有效群友短句仅 ${lines.length} 条，不足以提炼（至少需 5 条）` }
       }
 
       const count = await runDistillLines(gid, lines)
       return {
         ok: true,
-        message: count > 0 
-          ? `成功抽样 ${lines.length} 组历史发言，提炼合并出 ${count} 条语感规则！`
-          : `成功分析 ${lines.length} 组发言，但未发现有代表性的特殊口癖（内容较常规或被过滤）`,
+        message: count > 0
+          ? `抽样 ${lines.length} 条群友短句，提炼出 ${count} 条高信噪比口癖！`
+          : `抽样 ${lines.length} 条短句，未发现值得入库的通用口癖（已过滤业务台词与噪点）`,
         sampleCount: lines.length,
         extractedCount: count,
       }
     })
 
-    // 模拟测试回复效果接口（沙盒验证）
     api.route('/simulate', async (req) => {
       const body = await readBody(req)
-      const gid = body?.scope || body?.groupId
+      const gid = body?.groupId || body?.scope
       const { userText } = body || {}
       if (!gid || !userText?.trim()) return { ok: false, message: '缺少 groupId 或测试内容' }
 
-      const minCount = Number(api.settings().minPromotionCount) || 3
-      const includeGlobal = gid !== 'global' && api.settings().globalSharing !== false
-      const activeRules = store.getActiveRules(gid, minCount, { includeGlobal })
-      const maxRules = Number(api.settings().maxInjectedRules) || 2
-      const matched = store.matchRelevantRules(activeRules, userText, maxRules)
+      const settings = api.settings()
+      const minCount = Math.max(2, Number(settings.minPromotionCount) || 4)
+      const activeRules = store.getActiveRules(gid, minCount)
+      const maxRules = Math.max(1, Math.min(Number(settings.maxInjectedRules) || 1, 2))
+      const matched = store.matchRelevantRules(activeRules, userText, maxRules, { ruleCooldownMs: 0 })
 
-      const hints = matched.map(r => {
-        const sit = r.situation.replace(/时$/, '')
-        return `当${sit}时，可以像群友一样这样说：${r.style}`
-      }).join('；')
-
-      const stylePrompt = hints ? `（当前群聊语感参考：${hints}。保持自身原本身份设定，自然带一点群友常说的调调即可，切勿生搬硬套模板或冒充他人经历。）` : ''
-      const basePersona = api.core?.personas?.currentPersonaText?.() || '你是大肥鱼，一只性格活泼随和的数字生命。'
-      const system = `${basePersona}\n\n${stylePrompt}`
+      const stylePrompt = formatHintPrompt(matched)
+      const basePersona = api.core?.personas?.currentPersonaText?.() || '你是一个真实在 QQ 群里摸鱼聊天的网友。'
+      const system = stylePrompt ? `${basePersona}\n\n${stylePrompt}` : basePersona
 
       const reply = await askDistill({
         system,
         text: userText,
-        maxTokens: 500,
+        maxTokens: 300,
         temperature: 0.7,
       })
 
@@ -506,12 +465,16 @@ export default {
     })
 
     return {
-      getGroupRules: (gid) => store.getActiveRules(gid),
+      getGroupRules: (gid) => store.getActiveRules(gid, Math.max(2, Number(api.settings().minPromotionCount) || 4)),
       clearGroupRules: (gid) => store.clearRules(gid),
+      purgeDirtyRules: (gid) => store.purgeDirtyRules(gid),
       dispose: () => {
         buffers.clear()
         recentChatCache.clear()
-      }
+        lastDistillAt.clear()
+        lastInjectAt.clear()
+        distilling.clear()
+      },
     }
-  }
+  },
 }

@@ -1,424 +1,233 @@
-import test from 'node:test'
+import test, { afterEach, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
-import { buildDistillPrompt } from './prompt.mjs'
-import { verifyAndCleanRules, safeParseJsonArray, salvageTruncatedObjects } from './verifier.mjs'
-import { createDistillStore } from './store.mjs'
-import { scanHistoryGroups, sampleGroupHistory } from './history-miner.mjs'
+import { isBotSender, sanitizeHumanMessage } from './filter.mjs'
+import { verifyAndCleanRules, isQualityRule, safeParseJsonArray, normalizeStyle } from './verifier.mjs'
+import { createDistillStore, areRulesSimilar } from './store.mjs'
+import { sampleGroupHistory } from './history-miner.mjs'
 import distillModule from './index.mjs'
 
-test('prompt: 正确生成带 [id:xx] 的提取提示词', () => {
+let tempDir
+
+beforeEach(() => {
+  tempDir = mkdtempSync(join(tmpdir(), 'distill-v2-test-'))
+})
+
+afterEach(() => {
+  if (tempDir) rmSync(tempDir, { recursive: true, force: true })
+})
+
+test('filter: 严格拦截自身 Bot、Q群管家、fishGuard、链接广播与长文粘贴', () => {
+  const fishGuard = { fishIds: ['90001'], nameSuffixes: ['Ai'] }
+
+  assert.equal(isBotSender({ userId: '', nickname: 'bot', botQQ: '20002', fishGuard }), true)
+  assert.equal(isBotSender({ userId: '20002', nickname: '小鱼', botQQ: '20002', fishGuard }), true)
+  assert.equal(isBotSender({ userId: '2854196310', nickname: 'Q群管家', botQQ: '20002', fishGuard }), true) // pii-scan:ignore
+  assert.equal(isBotSender({ userId: '90001', nickname: '路人', botQQ: '20002', fishGuard }), true)
+  assert.equal(isBotSender({ userId: '12345', nickname: '助手Ai', botQQ: '20002', fishGuard }), true)
+  assert.equal(isBotSender({ userId: '30001', nickname: '群友甲', botQQ: '20002', fishGuard }), false)
+
+  assert.equal(sanitizeHumanMessage('欢迎欢迎\nwww.example.com\n点链接进来看看'), '')
+  assert.equal(sanitizeHumanMessage('[图片]'), '')
+  assert.equal(sanitizeHumanMessage('/status'), '')
+  assert.equal(sanitizeHumanMessage('TypeError: cannot read properties of undefined'), '')
+  assert.equal(sanitizeHumanMessage('一'.repeat(65)), '')
+  assert.equal(sanitizeHumanMessage('太难绷了 真离谱'), '太难绷了 真离谱')
+})
+
+test('verifier: 放行干净短口癖，拦截具体业务台词/数字价格/元模板，且支持截断 JSON 抢救', () => {
   const lines = [
-    { name: '群友A', text: '这把真的太难了' },
-    { name: '群友B', text: '菜就多练，输不起别玩' }
-  ]
-  const { system, text } = buildDistillPrompt(lines)
-  assert.match(text, /当 "AAAAA" 时，可以使用 "BBBBB"/)
-  assert.match(text, /\[id:1\] \[name:群友A\]/)
-  assert.match(text, /\[id:2\] \[name:群友B\]/)
-})
-
-test('verifier: 严格防自投毒（排除 Bot 自己）与排除真实生活经历', () => {
-  const lines = [
-    { name: 'Bot', isBot: true, text: '你好，我是大肥鱼' },
-    { name: '群友A', isBot: false, text: '笑死我了，昨天我被封号了' },
-    { name: '群友B', isBot: false, text: '确实有点东西' }
+    { name: '甲', isBot: false, text: '太难绷了' },
+    { name: '乙', isBot: false, text: '直接开摆' },
+    { name: '丙', isBot: false, text: '确实' },
+    { name: '机器人', isBot: true, text: '笑死' },
   ]
 
-  const rawRules = [
-    { situation: '打招呼', style: '使用 你好呀', source_id: 1 }, // 来源于 Bot -> 必须剔除
-    { situation: '倒霉经历', style: '抱怨我被封号了', source_id: 2 }, // 冒充群友经历 -> 必须剔除
-    { situation: '表示认可且带调侃', style: '使用 确实有点东西', source_id: 3 }, // 合法群友风格 -> 保留
-    { situation: '瞎编的', style: '无源之水', source_id: 99 }, // 越界 ID -> 必须剔除
+  const raw = [
+    { situation: '觉得很离谱时', style: '使用“太难绷了”', source_id: 1 },
+    { situation: '懒得折腾放弃', style: '直接开摆', source_id: 2 },
+    { situation: '觉得很好笑', style: '笑死', source_id: 4 },
+    { situation: '吐槽模型降智', style: '模型名加数字 如 可以用200刀', source_id: 1 },
+    { situation: '欢迎新人入群', style: '连说欢迎欢迎再补去薅一下', source_id: 2 },
+    { situation: '嫌价格太贵', style: '直接报数字 现在最便宜左右', source_id: 3 },
+    { situation: '表示附和', style: '确实', source_id: 3 },
   ]
 
-  const cleaned = verifyAndCleanRules(rawRules, lines)
-  assert.equal(cleaned.length, 1)
-  assert.equal(cleaned[0].situation, '表示认可且带调侃')
-  assert.equal(cleaned[0].style, '使用 确实有点东西')
+  const cleaned = verifyAndCleanRules(raw, lines)
+  assert.equal(cleaned.length, 3)
+  assert.deepEqual(cleaned.map(r => r.style), ['太难绷了', '直接开摆', '确实'])
+  assert.equal(normalizeStyle('调侃使用“真假的”'), '真假的')
+  assert.equal(isQualityRule({ situation: '自嘲自己的bot表现差', style: '我在干正事' }), false)
+  assert.equal(isQualityRule({ situation: '觉得离谱', style: '你这个…都是…' }), false)
+  assert.equal(safeParseJsonArray('<think>ok</think>[]').length, 0)
+
+  // 截断 JSON 数组抢救
+  const truncated = '[{"situation":"觉得离谱","style":"难绷","source_id":1},{"situation":"写了一半'
+  const rescued = safeParseJsonArray(truncated)
+  assert.equal(rescued.length, 1)
+  assert.equal(rescued[0].style, '难绷')
 })
 
-test('store: 规则存储、频次递增、锁定与容量淘汰机制', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'distill-test-'))
-  try {
-    const store = createDistillStore(dir)
-    const gid = '123456'
+test('store: 严格按群隔离（忽略遗留 global）、不乱合并、保留更短口癖与冷却防复读', () => {
+  // 模拟旧版遗留 global 数据
+  writeFileSync(join(tempDir, 'distill-rules.json'), JSON.stringify({
+    groups: {
+      global: { rules: [{ id: 'g1', situation: '觉得离谱', style: '全局旧梗', count: 99, locked: true }] },
+    },
+  }), 'utf8')
 
-    // 1. 添加初始规则
-    store.addRules(gid, [
-      { situation: '游戏逆风', style: '菜就多练' },
-      { situation: '代码报错', style: '重启大法' },
-      { situation: '抽卡爆死', style: '好似开香槟' }
-    ], 3)
+  const store = createDistillStore(tempDir)
+  assert.deepEqual(store.getAllGroupIds(), [], '不得暴露旧版 global 作用域')
+  assert.deepEqual(store.getActiveRules('10001', 1), [], '不得继承旧版 global 规则')
 
-    let rules = store.getRawRules(gid)
-    assert.equal(rules.length, 3)
+  // 不相关规则绝不合并
+  assert.equal(
+    areRulesSimilar(
+      { situation: '吐槽天气太热', style: '热麻了' },
+      { situation: '吐槽排队太久', style: '等麻了' },
+    ),
+    false,
+  )
+  // 真正近义才合并
+  assert.equal(
+    areRulesSimilar(
+      { situation: '觉得太离谱', style: '太难绷了' },
+      { situation: '觉得很离谱', style: '难绷' },
+    ),
+    true,
+  )
 
-    // 2. 锁定第一条规则
-    const ruleA = rules.find(r => r.situation === '游戏逆风')
-    const locked = store.toggleLock(gid, ruleA.id)
-    assert.equal(locked, true)
+  store.addRules('10001', [{ situation: '觉得太离谱', style: '太难绷了' }], 60)
+  store.addRules('10001', [{ situation: '觉得很离谱', style: '难绷' }], 60)
+  store.addRules('10001', [{ situation: '觉得太离谱', style: '太难绷了吧这也' }], 60)
+  store.addRules('10001', [{ situation: '觉得很离谱', style: '难绷' }], 60)
 
-    // 3. 重复添加近义规则 -> 频次累加
-    store.addRules(gid, [{ situation: '游戏快输了时', style: '调侃 菜就多练' }], 3)
-    rules = store.getRawRules(gid)
-    const ruleAAfter = rules.find(r => r.id === ruleA.id)
-    assert.equal(ruleAAfter.count, 2)
+  // 群 10002 隔离不可见
+  assert.equal(store.getActiveRules('10002', 4).length, 0)
 
-    // 4. 超容量添加情境D（总上限3条）：ruleA被锁定必保留，ruleA频次高（count=2）保留，代码报错最冷门被淘汰
-    await new Promise(r => setTimeout(r, 5))
-    store.addRules(gid, [{ situation: '吃饭点外卖', style: '直接点疯狂星期四' }], 3)
-    rules = store.getRawRules(gid)
-    assert.equal(rules.length, 3)
-    assert.ok(rules.some(r => r.id === ruleA.id)) // locked A 保留
-    assert.ok(rules.some(r => r.situation === '吃饭点外卖')) // 新规则 D 保留
+  const active = store.getActiveRules('10001', 4)
+  assert.equal(active.length, 1)
+  assert.equal(active[0].count, 4)
+  assert.equal(active[0].style, '难绷')
 
-    // 5. 门槛过滤验证：minCount = 2 时，只有 A 生效
-    const active = store.getActiveRules(gid, 2)
-    assert.equal(active.length, 1)
-    assert.equal(active[0].id, ruleA.id)
+  assert.equal(store.matchRelevantRules(active, '中午吃点啥外卖呢', 1).length, 0)
 
-    // 6. 情境匹配：严格命中
-    const matched = store.matchRelevantRules(active, '今天游戏逆风局真难打', 2)
-    assert.equal(matched.length, 1)
-    assert.equal(matched[0].id, ruleA.id)
+  const now = Date.now()
+  const hit = store.matchRelevantRules(active, '这操作也太离谱了吧', 1, { now })
+  assert.equal(hit.length, 1)
+  assert.equal(hit[0].style, '难绷')
 
-    // 7. 未命中时绝不盲目返回
-    const noMatch = store.matchRelevantRules(active, '今天天气真不错适合散步', 2)
-    assert.equal(noMatch.length, 0)
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
+  store.recordRuleUsage('10001', [hit[0].id])
+  const refreshed = store.getActiveRules('10001', 4)
+  assert.equal(store.matchRelevantRules(refreshed, '这操作也太离谱了吧', 1, { now: now + 1000 }).length, 0)
+
+  // purgeDirtyRules 连带清除遗留 global
+  const purged = store.purgeDirtyRules()
+  assert.equal(purged, 1)
+})
+
+test('history-miner: 历史抽样自动跳过 who=bot、Q群管家与广告链接', () => {
+  const logFile = join(tempDir, '2026-11-25.jsonl')
+  const entries = [
+    { t: 1000, chatId: 'group:10001', who: 'bot', uid: null, text: '我是机器人的回复' },
+    { t: 2000, chatId: 'group:10001', who: 'Q群管家', uid: '2854196310', text: '欢迎欢迎 www.example.com' }, // pii-scan:ignore
+    { t: 3000, chatId: 'group:10001', who: '群友甲', uid: '30001', text: '这也太离谱了吧' },
+    { t: 4000, chatId: 'group:10001', who: '群友乙', uid: '30002', text: '直接开摆了' },
+  ]
+  writeFileSync(logFile, entries.map(e => JSON.stringify(e)).join('\n') + '\n', 'utf8')
+
+  const sampled = sampleGroupHistory(tempDir, '10001', { days: 1, botQQ: '20002' })
+  assert.equal(sampled.length, 2)
+  assert.deepEqual(sampled.map(x => x.name), ['群友甲', '群友乙'])
+})
+
+test('module lifecycle: 过滤管家、无全局底座、冷却生效、专用模型覆盖与失败回退', async () => {
+  let onMessage = null
+  let contextFn = null
+  const routes = new Map()
+  const askCalls = []
+  const settings = {
+    ...distillModule.defaults,
+    enabled: true,
+    minPromotionCount: 2,
+    injectChance: 1,
+    injectCooldownSec: 180,
+    modelOverride: 'custom::bad-model',
   }
-})
 
-test('history-miner: 正确扫描群聊并采样过滤', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'chatlog-test-'))
-  try {
-    const fakeLog = [
-      JSON.stringify({ t: 1000, chatId: 'group:999', who: '群友1', uid: '111', text: '群里今天真热闹' }),
-      JSON.stringify({ t: 2000, chatId: 'group:999', who: '大肥鱼', uid: '222', text: '大家好呀' }), // Bot -> 应过滤
-      JSON.stringify({ t: 3000, chatId: 'group:999', who: '群友2', uid: '333', text: '[图片]' }), // 纯表情 -> 应过滤
-      JSON.stringify({ t: 4000, chatId: 'group:999', who: '群友1', uid: '111', text: '确实好活' }),
-      JSON.stringify({ t: 5000, chatId: 'group:888', who: '群友3', uid: '444', text: '另一个群的消息' }),
-    ].join('\n')
-    writeFileSync(join(dir, '2026-11-16.jsonl'), fakeLog)
-
-    const groups = scanHistoryGroups(dir)
-    assert.equal(groups.length, 2)
-    assert.equal(groups.find(g => g.groupId === '999').totalCount, 4)
-
-    const samples = sampleGroupHistory(dir, '999', { days: 1, sampleSize: 10, botQQ: '222' })
-    assert.equal(samples.length, 2)
-    assert.equal(samples[0].text, '群里今天真热闹')
-    assert.equal(samples[1].text, '确实好活')
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
+  const api = {
+    dataDir: () => tempDir,
+    settings: () => settings,
+    saveSettings: (patch) => Object.assign(settings, patch),
+    config: () => ({ botQQ: '20002', group: { fishGuard: { fishIds: ['90001'], nameSuffixes: ['Ai'] } } }),
+    core: {
+      listModels: async () => [{ provider: 'openai', model: 'gpt-5-mini', name: 'GPT-5 mini' }],
+      defaultModel: () => ({ provider: 'deepseek', model: 'deepseek-chat' }),
+    },
+    log: { info() {}, debug() {}, warn() {} },
+    on: (ev, fn) => { if (ev === 'message') onMessage = fn },
+    context: (fn) => { contextFn = fn },
+    route: (path, fn) => routes.set(path, fn),
+    later: () => {},
+    ask: async (opts) => {
+      askCalls.push(opts)
+      if (opts.model === 'bad-model') throw new Error('model unavailable')
+      return '回退主模型回复'
+    },
   }
-})
 
-test('module runtime: 实时消息监听与缓冲累积', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'module-test-'))
-  try {
-    const listeners = new Map()
-    const routes = new Map()
-    let contextFn = null
+  const inst = distillModule.setup(api)
 
-    const mockApi = {
-      dataDir: () => dir,
-      settings: () => ({ enabled: true, batchSize: 5, activeGroups: '123' }),
-      config: () => ({ botQQ: '10001' }),
-      log: { info() {}, warn() {}, debug() {} },
-      on: (event, fn) => { listeners.set(event, fn) },
-      context: (fn) => { contextFn = fn },
-      route: (path, fn) => { routes.set(path, fn) },
-      later: (ms, fn) => setTimeout(fn, ms),
-      ask: async () => '[]'
-    }
+  await routes.get('/add-manual')({ body: { groupId: '10001', situation: '觉得离谱', style: '太难绷了' } })
 
-    const mod = distillModule.setup(mockApi)
-    const onMessage = listeners.get('message')
-    assert.ok(typeof onMessage === 'function')
+  // Q群管家发广告 -> 不进入缓存也不触发匹配
+  await onMessage({ kind: 'group', groupId: '10001', userId: '2854196310', nickname: 'Q群管家', text: '离谱 欢迎欢迎 www.example.com' }) // pii-scan:ignore
+  assert.equal(contextFn({ chat: { kind: 'group', groupId: '10001' } }), '')
 
-    // 1. 测试私聊消息 -> 被忽略
-    const r1 = await onMessage({ kind: 'private', userId: '888', text: '你好' })
-    assert.equal(r1, false)
+  // 真实群友发言 -> 命中并输出轻量提示
+  await onMessage({ kind: 'group', groupId: '10001', userId: '30001', nickname: '群友甲', text: '这也太离谱了吧' })
+  const hint1 = contextFn({ chat: { kind: 'group', groupId: '10001' } })
+  assert.match(hint1, /顺嘴参考.*太难绷了/)
 
-    // 2. 测试 Bot 自身发言 -> 被忽略
-    const r2 = await onMessage({ kind: 'group', groupId: '123', userId: '10001', text: '我是Bot' })
-    assert.equal(r2, false)
+  // 冷却内不重复注入
+  assert.equal(contextFn({ chat: { kind: 'group', groupId: '10001' } }), '')
 
-    // 3. 测试未生效群 -> 被忽略
-    const r3 = await onMessage({ kind: 'group', groupId: '456', userId: '888', text: '其他群发言' })
-    assert.equal(r3, false)
+  // /status 不包含任何 global 项
+  const status = await routes.get('/status')({})
+  assert.equal(status.ok, true)
+  assert.equal(status.list.some(x => x.groupId === 'global'), false)
 
-    // 4. 测试合法群友发言 -> 正常接收并进入缓存
-    const r4 = await onMessage({ kind: 'group', groupId: '123', userId: '888', nickname: '群友A', text: '第一句' })
-    assert.equal(r4, false)
+  // 通用设置不再重复暴露 modelOverride（避免与面板下拉互相覆盖）
+  assert.equal(distillModule.settings.some(s => s.key === 'modelOverride'), false)
+  assert.equal(Object.prototype.hasOwnProperty.call(distillModule.defaults, 'modelOverride'), true)
 
-    const statusHandler = routes.get('/status')
-    const status = await statusHandler()
-    const groupStat = status.list.find(g => g.groupId === '123')
-    assert.ok(groupStat)
-    assert.equal(groupStat.bufferCount, 1)
+  // /models & /save-settings
+  const modelsRes = await routes.get('/models')({})
+  assert.equal(modelsRes.ok, true)
+  assert.equal(modelsRes.list.length, 1)
+  assert.equal(modelsRes.defaultModel, 'deepseek::deepseek-chat')
 
-    mod.dispose()
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
+  // 配置了 QQ Hub 主模型时 /models 优先显示它，而不是宿主默认模型
+  api.config = () => ({ botQQ: '20002', model: { provider: 'custom', model: 'chat-main' }, group: { fishGuard: { fishIds: ['90001'], nameSuffixes: ['Ai'] } } })
+  const modelsWithCfg = await routes.get('/models')({})
+  assert.equal(modelsWithCfg.defaultModel, 'custom::chat-main')
 
-test('store: 分层规则库（全局共享底座 + 群专属优先覆盖 + 跨群频次累加 + 规则流转）', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'tiered-distill-test-'))
-  try {
-    const store = createDistillStore(dir)
+  // /simulate 验证专用模型失败自动回退主模型
+  const sim = await routes.get('/simulate')({ body: { groupId: '10001', userText: '这也太离谱了' } })
+  assert.equal(sim.ok, true)
+  assert.equal(sim.hit, true)
+  assert.equal(sim.reply, '回退主模型回复')
+  assert.equal(askCalls.length, 2, '指定模型失败后必须自动回退主模型')
+  assert.equal(askCalls[0].model, 'bad-model')
+  assert.equal(askCalls[1].model, undefined)
 
-    // 1. 全局底座添加通用规则（count 初始 1）
-    store.addRules('global', [
-      { situation: '遇到bug', style: '调侃 重启电脑' },
-      { situation: '抽卡出金', style: '发开香槟表情' },
-    ], 10, { originGroup: 'groupA' })
+  // 保存新模型
+  const saveRes = await routes.get('/save-settings')({ body: { modelOverride: 'openai::gpt-5-mini' } })
+  assert.equal(saveRes.ok, true)
+  assert.equal(settings.modelOverride, 'openai::gpt-5-mini')
 
-    // 2. groupB 再次提炼出相近的全局规则 -> 频次聚类累加且合并来源群
-    store.addRules('global', [
-      { situation: '遇到代码bug时', style: '说重启电脑' },
-    ], 10, { originGroup: 'groupB' })
-
-    const globalRules = store.getRawRules('global')
-    const bugRule = globalRules.find(r => r.situation.includes('bug'))
-    assert.ok(bugRule)
-    assert.equal(bugRule.count, 2)
-    assert.deepEqual(bugRule.sourceGroups.sort(), ['groupA', 'groupB'].sort())
-
-    // 3. 群 999 继承全局规则
-    let activeIn999 = store.getActiveRules('999', 2, { includeGlobal: true })
-    assert.equal(activeIn999.length, 1) // bugRule 频次达到 2
-    assert.equal(activeIn999[0].isGlobal, true)
-
-    // 4. 群 999 自定义群专属规则（覆盖全局的 bug 规则）
-    store.addRules('999', [
-      { situation: '遇到bug', style: '本群专属黑话 找群主修' },
-    ], 10)
-    store.promoteCandidate('999', store.getRawRules('999')[0].id) // 锁定转正
-
-    // 再次读取群 999 的正式规则：本地近义优先，全局被遮蔽
-    activeIn999 = store.getActiveRules('999', 2, { includeGlobal: true })
-    const activeBug = activeIn999.find(r => r.situation.includes('bug'))
-    assert.equal(activeBug.style, '本群专属黑话 找群主修')
-    assert.equal(activeBug.isGlobal, false)
-
-    // 5. 将群 999 的专属规则设为全局共享 (scopeRule)
-    const localRuleId = activeBug.id
-    const migrated = store.scopeRule('999', 'global', localRuleId)
-    assert.equal(migrated, true)
-    // 999 本地已移除
-    assert.equal(store.getRawRules('999').length, 0)
-    // global 已增加/合并
-    assert.ok(store.getRawRules('global').some(r => r.id === localRuleId || r.style.includes('找群主修')))
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
-
-test('module: 全局共享底座与分层路由与注入验证', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'tiered-mod-test-'))
-  try {
-    const listeners = new Map()
-    const routes = new Map()
-    let contextFn = null
-
-    const mockApi = {
-      dataDir: () => dir,
-      settings: () => ({ enabled: true, globalSharing: true, minPromotionCount: 2 }),
-      config: () => ({ botQQ: '10001' }),
-      log: { info() {}, warn() {}, debug() {} },
-      on: (event, fn) => { listeners.set(event, fn) },
-      context: (fn) => { contextFn = fn },
-      route: (path, fn) => { routes.set(path, fn) },
-      later: (ms, fn) => setTimeout(fn, ms),
-      ask: async () => '[]'
-    }
-
-    const mod = distillModule.setup(mockApi)
-
-    // 手动录入一条全局规则
-    const addManualHandler = routes.get('/add-manual')
-    await addManualHandler({
-      scope: 'global',
-      situation: '聊到发工资',
-      style: '请客吃大餐'
-    })
-
-    // 1. 测试 /status 路由：首项为 global，且 isGlobal 为 true
-    const statusHandler = routes.get('/status')
-    const statusRes = await statusHandler()
-    assert.equal(statusRes.ok, true)
-    assert.equal(statusRes.list[0].groupId, 'global')
-    assert.equal(statusRes.list[0].isGlobal, true)
-    assert.equal(statusRes.list[0].activeCount, 1)
-
-    // 2. 测试 /rules 路由：对于新群 777，在 globalSharing 开启时继承 global 规则
-    const rulesHandler = routes.get('/rules')
-    const rulesRes = await rulesHandler({ url: 'http://localhost/rules?groupId=777' })
-    assert.equal(rulesRes.ok, true)
-    assert.equal(rulesRes.activeRules.length, 1)
-    assert.equal(rulesRes.activeRules[0].isGlobal, true)
-    assert.equal(rulesRes.activeRules[0].situation, '聊到发工资')
-
-    // 3. 测试上下文注入命中
-    const onMessage = listeners.get('message')
-    await onMessage({
-      kind: 'group',
-      groupId: '777',
-      userId: '888',
-      nickname: '群友小王',
-      text: '今天公司发工资啦！',
-    })
-
-    const ctx = contextFn({ chat: { kind: 'group', groupId: '777' } })
-    assert.match(ctx, /聊到「发工资」时群友常带的语调：请客吃大餐/)
-
-    mod.dispose()
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
-
-// 蒸馏专用模型（1.0.0-beta.6）：提炼负载和群聊回复负载分开挑模型。
-// 这里用 /simulate 打通同一条 askDistill 路径，省得再造一份 chatlog。
-test('module: 蒸馏专用模型——透传 provider/model，选错自动回退主模型', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'distill-model-test-'))
-  try {
-    const routes = new Map()
-    const listeners = new Map()
-    let settings = { enabled: true, minPromotionCount: 2, modelOverride: 'openai::gpt-5-mini' }
-    const calls = []
-    let failCustom = false
-
-    const mockApi = {
-      dataDir: () => dir,
-      settings: () => ({ ...settings }),
-      saveSettings: (patch) => { settings = { ...settings, ...patch }; return { ...settings } },
-      config: () => ({ botQQ: '10001' }),
-      log: { info() {}, warn() {}, debug() {} },
-      on: (event, fn) => { listeners.set(event, fn) },
-      context: () => {},
-      route: (path, fn) => { routes.set(path, fn) },
-      later: (ms, fn) => setTimeout(fn, ms),
-      core: {
-        personas: { currentPersonaText: () => '你是测试人格' },
-        listModels: async () => [
-          { provider: 'openai', model: 'gpt-5-mini', name: 'GPT-5 mini' },
-          { provider: 'deepseek', model: 'deepseek-chat', name: 'DeepSeek Chat' },
-        ],
-        defaultModel: () => ({ provider: 'deepseek', model: 'deepseek-chat' }),
-      },
-      ask: async (opts) => {
-        calls.push(opts)
-        if (failCustom && opts.provider === 'openai') throw new Error('model not found')
-        return '好的呀'
-      },
-    }
-
-    const mod = distillModule.setup(mockApi)
-    const modelsHandler = routes.get('/models')
-    const saveHandler = routes.get('/save-settings')
-    const simulateHandler = routes.get('/simulate')
-
-    // 1. /models 回宿主目录，并标出当前配置与主模型
-    let models = await modelsHandler()
-    assert.equal(models.ok, true)
-    assert.equal(models.list.length, 2)
-    assert.ok(models.list.some(m => m.value === 'openai::gpt-5-mini'))
-    assert.equal(models.active, 'openai::gpt-5-mini')
-    assert.equal(models.defaultModel, 'deepseek::deepseek-chat')
-
-    // 2. 指定模型 -> api.ask 必须拿到 provider/model（否则等于没生效）
-    await simulateHandler({ scope: '123', userText: '今天天气不错' })
-    assert.equal(calls.length, 1)
-    assert.equal(calls[0].provider, 'openai')
-    assert.equal(calls[0].model, 'gpt-5-mini')
-
-    // 3. 指定模型挂了 -> 记一条 warn，本次回退主模型（不传 provider/model）
-    failCustom = true
-    const fallbackRes = await simulateHandler({ scope: '123', userText: '今天天气不错' })
-    assert.equal(fallbackRes.ok, true)
-    assert.equal(calls.length, 3, '失败一次 + 回退一次，不能把提炼链路拖哑')
-    assert.equal(calls[2].provider, undefined)
-    assert.equal(calls[2].model, undefined)
-    failCustom = false
-
-    // 4. 手填写法也认 provider/模型名（模型 id 自带斜杠时整段留作模型名）
-    const saved = await saveHandler({ modelOverride: 'deepseek/deepseek-chat' })
-    assert.equal(saved.ok, true)
-    assert.equal(saved.modelOverride, 'deepseek/deepseek-chat')
-    await simulateHandler({ scope: '123', userText: '再试一句' })
-    assert.equal(calls[calls.length - 1].provider, 'deepseek')
-    assert.equal(calls[calls.length - 1].model, 'deepseek-chat')
-
-    // 5. 格式不对（没有分隔符）不能瞎猜 provider，按跟随主模型处理并报给面板
-    await saveHandler({ modelOverride: 'gpt-5-mini' })
-    models = await modelsHandler()
-    assert.equal(models.invalid, 'gpt-5-mini')
-    await simulateHandler({ scope: '123', userText: '第三句' })
-    assert.equal(calls[calls.length - 1].provider, undefined)
-
-    // 6. 清空 = 跟随主模型，面板恢复成默认项
-    await saveHandler({ modelOverride: '' })
-    models = await modelsHandler()
-    assert.equal(models.modelOverride, '')
-    assert.equal(models.active, '')
-
-    mod.dispose()
-  } finally {
-    rmSync(dir, { recursive: true, force: true })
-  }
-})
-
-// 截断抢救（fix/distill-truncated-json）：
-// 提炼一次喂 15 条消息、maxTokens 一紧，模型常常写到一半被截停，JSON 数组没有右括号。
-// 旧实现严格配对找不到闭合就返回 []，**前面已写完整的规则一起丢**（真机 2026-11-21：
-// 当天 21 次「未解析出有效规则」，日志回包里明明有完整对象）。纯损失，不是模型没产出。
-
-test('verifier: 被截断的 JSON 数组要抢救出已写完整的对象，而不是整包丢弃', () => {
-  const full = '[{"situation":"遇到反复弹窗等离谱烦恼","style":"开头惊呼wtf加反问为啥","source_id":1},'
-    + '{"situation":"追问别人一直没回复","style":"@对方说 你还没回答我呢","source_id":2},'
-    + '{"situation":"调侃对方说话太毒舌","style":"用句式 你还真是呢","source_id":3}]'
-
-  // 完整时行为不变（3 条，且不走抢救分支）
-  assert.equal(safeParseJsonArray(full).length, 3)
-
-  // 截到第 2 个对象完整、第 3 个写一半：应救回 2 条
-  const cut2 = full.slice(0, full.indexOf('"调侃对方说话太毒舌"') + 10)
-  assert.equal(safeParseJsonArray(cut2).length, 2, '前两条完整规则不能因为第三条没写完而丢掉')
-
-  // 只截完第 1 个对象：应救回 1 条
-  const cut1 = full.slice(0, full.indexOf('"追问别人') + 5)
-  assert.equal(safeParseJsonArray(cut1).length, 1)
-
-  // 一个完整对象都没有：不要瞎编
-  assert.deepEqual(safeParseJsonArray('[{"situation":"写到一半就'), [])
-})
-
-test('verifier: 抢救时字符串里的 ] 与 } 不能被当成数组/对象结束', () => {
-  const tricky = '[{"situation":"a b","style":"他说「]」还有 {}","source_id":1},{"situation":"c d","style":"半截'
-  const got = salvageTruncatedObjects(tricky)
-  assert.equal(got.length, 1)
-  assert.equal(got[0].style, '他说「]」还有 {}', '按 JSON 字符串规则跳过括号，不能提前截断')
-
-  // 转义引号同样不能把字符串判定提前结束。
-  // 这里必须让回包里是「反斜杠 + 引号」两个字面字符（JSON 的 \" ），不是 JS 先转义成裸引号 ——
-  // 裸引号进 JSON 本身就是非法，返回 0 才是对的（第一版用例写成裸引号，误判成函数 bug）。
-  const escaped = '[{"situation":"a b","style":"他说 \\"好\\" 然后","source_id":1},{"situation":"x'
-  assert.ok(escaped.includes('\\"'), '用例自身先确认回包里确实是转义序列')
-  assert.equal(salvageTruncatedObjects(escaped).length, 1)
-  assert.equal(salvageTruncatedObjects(escaped)[0].style, '他说 "好" 然后', '转义引号解析回裸引号')
-})
-
-test('verifier: 非 JSON 回包抢救也返回空（不许无中生有）', () => {
-  assert.deepEqual(salvageTruncatedObjects('模型这次什么都没给'), [])
-  assert.deepEqual(salvageTruncatedObjects(''), [])
-  assert.deepEqual(salvageTruncatedObjects(null), [])
+  inst.dispose()
 })

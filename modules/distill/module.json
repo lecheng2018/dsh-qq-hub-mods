@@ -1,11 +1,10 @@
 {
   "id": "distill",
-  "name": "群友蒸馏（测试版）",
-  "version": "1.0.0-beta.6",
-  "description": "【测试版】移植 MaiBot 语感提炼机制，高信噪比提取群友接话习惯与口癖，设置频次门槛，绝不强行加戏。",
+  "name": "群友蒸馏",
+  "version": "2.0.0",
+  "description": "按群独立、高信噪比提炼群友短口癖与接话节奏：严格隔离机器人/广告/具体台词，带冷却、概率门禁与复读防线，宁缺毋滥。",
   "category": "persona",
   "tags": [
-    "beta",
     "distill",
     "maibot",
     "persona",
