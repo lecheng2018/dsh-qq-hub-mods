@@ -49,7 +49,6 @@ export default {
     { key: 'injectChance', label: '命中后注入概率（0~1）', type: 'number', min: 0.05, max: 1, step: 0.05 },
     { key: 'injectCooldownSec', label: '同群注入冷却（秒）', type: 'number', min: 0, max: 1800 },
     { key: 'activeGroups', label: '指定生效群号（逗号分隔，留空全生效）', type: 'text' },
-    { key: 'modelOverride', label: '蒸馏专用模型（provider::模型名，留空跟随主模型）', type: 'text', placeholder: '例如 openai::gpt-5-mini' },
   ],
 
   setup(api) {
@@ -242,8 +241,13 @@ export default {
       }
       let defaultModel = ''
       try {
-        const d = api.core?.defaultModel?.()
-        if (d && d.provider && d.model) defaultModel = `${d.provider}::${d.model}`
+        const cfgModel = api.config?.()?.model
+        if (cfgModel && cfgModel.provider && cfgModel.model) {
+          defaultModel = `${cfgModel.provider}::${cfgModel.model}`
+        } else {
+          const d = api.core?.defaultModel?.()
+          if (d && d.provider && d.model) defaultModel = `${d.provider}::${d.model}`
+        }
       } catch {}
       return {
         ok: true,

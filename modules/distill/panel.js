@@ -293,7 +293,7 @@ const STYLE_INJECTION = `
 `
 
 return function DistillPanel(props) {
-  const { toast, reload } = props || {}
+  const { toast, reload, setSettings } = props || {}
   const { Card, Btn, Empty, Select, Row } = ui
   const [loading, setLoading] = useState(true)
   const [groups, setGroups] = useState([])
@@ -339,6 +339,7 @@ return function DistillPanel(props) {
       const res = await call('/save-settings', { modelOverride: value })
       if (res && res.ok) {
         setModelInfo(prev => ({ ...(prev || {}), modelOverride: value, active: value }))
+        setSettings && setSettings({ modelOverride: value })
         toast && toast(value ? '蒸馏已改用指定模型' : '蒸馏已跟随主模型', 'ok')
         reload && reload()
       } else {
@@ -632,7 +633,7 @@ return function DistillPanel(props) {
         ? h('div', { className: 'ab-note err', style: { marginTop: 6 } }, `配置「${modelInfo.invalid}」格式不对，应为 provider::模型名，当前按跟随主模型处理。`)
         : null,
       h('div', { className: 'ab-small ab-muted', style: { marginTop: 4 } },
-        '也可以在「设置」里手填 provider::模型名（例如 openai::gpt-5-mini），两处是同一个配置项。'
+        '选择后会立即保存并生效，无需再点「保存设置」。'
       )
     ),
 

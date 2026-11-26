@@ -200,10 +200,20 @@ test('module lifecycle: 过滤管家、无全局底座、冷却生效、专用�
   assert.equal(status.ok, true)
   assert.equal(status.list.some(x => x.groupId === 'global'), false)
 
+  // 通用设置不再重复暴露 modelOverride（避免与面板下拉互相覆盖）
+  assert.equal(distillModule.settings.some(s => s.key === 'modelOverride'), false)
+  assert.equal(Object.prototype.hasOwnProperty.call(distillModule.defaults, 'modelOverride'), true)
+
   // /models & /save-settings
   const modelsRes = await routes.get('/models')({})
   assert.equal(modelsRes.ok, true)
   assert.equal(modelsRes.list.length, 1)
+  assert.equal(modelsRes.defaultModel, 'deepseek::deepseek-chat')
+
+  // 配置了 QQ Hub 主模型时 /models 优先显示它，而不是宿主默认模型
+  api.config = () => ({ botQQ: '20002', model: { provider: 'custom', model: 'chat-main' }, group: { fishGuard: { fishIds: ['90001'], nameSuffixes: ['Ai'] } } })
+  const modelsWithCfg = await routes.get('/models')({})
+  assert.equal(modelsWithCfg.defaultModel, 'custom::chat-main')
 
   // /simulate 验证专用模型失败自动回退主模型
   const sim = await routes.get('/simulate')({ body: { groupId: '10001', userText: '这也太离谱了' } })
