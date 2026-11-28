@@ -1,0 +1,24 @@
+{
+  "$schema": "../../schemas/module.schema.json",
+  "id": "group-engagement",
+  "name": "群参与分级",
+  "version": "1.0.0",
+  "description": "群插话参与分级（Shadow/TEXT_LITE/REACT/FULL）：轻量评分决定插话形态，宿主执行、插件只声明。默认 Shadow 零副作用，数据按群隔离且有界。",
+  "author": "lecheng2018",
+  "license": "MIT",
+  "api": 1,
+  "category": "tool",
+  "tags": [
+    "group",
+    "engagement",
+    "participation",
+    "shadow",
+    "react"
+  ],
+  "requires": [],
+  "capabilities": [
+    "storage",
+    "schedule",
+    "panel"
+  ]
+}
